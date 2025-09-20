@@ -1,0 +1,17 @@
+// Core files
+@import "bootstrap/scss/functions";
+@import "bootstrap/scss/variables";
+@import "bootstrap/scss/mixins";
+
+// Custom variables (overrides)
+@import "variables";
+
+// Bootstrap
+@import "bootstrap/scss/bootstrap";
+
+// Custom styles
+@import "custom";
+
+// Ensure icons and breadcrumb overrides are loaded last
+@import "icons";
+@import "components/breadcrumb";

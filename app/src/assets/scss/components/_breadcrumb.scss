@@ -1,0 +1,46 @@
+// 
+// breadcrumb.scss
+//
+
+
+// Breadcrumb item arrow
+.breadcrumb-item {
+    >a {
+        color: var(--#{$prefix}body-color);
+    }
+
+/* Extra specificity to override any framework defaults */
+.breadcrumb .breadcrumb-item + .breadcrumb-item::before {
+  content: "\ea6e" !important; // ri-arrow-right-s-line
+  font-family: "remixicon" !important;
+}
+
+    +.breadcrumb-item {
+        &::before {
+            /* Use Remix Icon arrow as the divider, matching Velzon look */
+            content: "\ea6e" !important; // ri-arrow-right-s-line
+            font-family: "remixicon" !important;
+            font-size: 14px;
+            line-height: 1;
+            vertical-align: middle;
+            margin-right: .5rem;
+            margin-left: .5rem;
+        }
+    }
+}
+.breadcrumb{
+    margin: 0;
+    align-items: center; // match spacing/vertical alignment from income-statement
+    > .breadcrumb-item {
+        display: inline-flex;
+        align-items: center;
+        > a, > span, > i {
+            display: inline-flex;
+            align-items: center;
+            line-height: 1;
+        }
+        i[class^="ri-"] {
+            line-height: 1;
+        }
+    }
+}
