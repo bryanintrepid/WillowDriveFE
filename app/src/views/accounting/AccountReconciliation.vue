@@ -77,27 +77,25 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted, computed } from 'vue';
+import { ref, reactive, watch, onMounted, onBeforeUnmount, computed } from 'vue';
 import { useRoute } from 'vue-router';
 import FiscalYearChooser from '../../components/FiscalYearChooser.vue';
 import EditCard from '../../components/EditCard.vue';
 import FilterTag from '../../components/FilterTag.vue';
 import ClearableSearchInput from '../../components/ClearableSearchInput.vue';
 import Paginate from '../../components/Paginate.vue';
+import api from '../../services/api';
+import { useFilterStore } from '../../stores/filterStore';
+
+const filterStore = useFilterStore();
+const PAGE_KEY = 'accountReconciliation';
 
 const editCardRefs = ref({});
 
 // --- Reactive State ---
 
 const pagination = reactive({
-  results: [
-    // Sample data - replace with API call
-    { id: '10100', accountNumber: '10100', accountTypeId: 1, description: 'Cash in Bank', enabled: true, isCashAccount: true, link: '', cfoRestricted: false, fiscalYear: 2024, beginningBalance: 150000.25, debits: 12000.00, credits: 5000.35, endingBalance: 157000.90, status: 'Approved' },
-    { id: '10200', accountNumber: '10200', accountTypeId: 1, description: 'Petty Cash', enabled: true, isCashAccount: true, link: '', cfoRestricted: false, fiscalYear: 2024, beginningBalance: 500.00, debits: 200.00, credits: 150.00, endingBalance: 550.00, status: 'Completed' },
-    { id: '12000', accountNumber: '12000', accountTypeId: 1, description: 'Accounts Receivable', enabled: true, isCashAccount: false, link: '', cfoRestricted: false, fiscalYear: 2024, beginningBalance: 30000.00, debits: 10000.00, credits: 8000.00, endingBalance: 32000.00, status: 'In Progress' },
-    { id: '20100', accountNumber: '20100', accountTypeId: 2, description: 'Accounts Payable', enabled: true, isCashAccount: false, link: '', cfoRestricted: false, fiscalYear: 2024, beginningBalance: 18000.00, debits: 4000.00, credits: 7000.00, endingBalance: 15000.00, status: 'Not Started' },
-    { id: '40100', accountNumber: '40100', accountTypeId: 4, description: 'Sales Revenue', enabled: true, isCashAccount: false, link: '', cfoRestricted: false, fiscalYear: 2024, beginningBalance: 25000.00, debits: 0.00, credits: 25000.00, endingBalance: 0.00, status: 'Completed' },
-  ],
+  results: [],
   queryParams: {
     searchText: '',
     orderBy: 'accountnumber',
@@ -116,11 +114,12 @@ const accountTypeChoices = ref([
 
 const currentYear = new Date().getFullYear();
 const selectedFiscalYear = ref(currentYear);
-const fiscalYearChoices = ref([
-  { value: currentYear + 1, text: (currentYear + 1).toString() },
-  { value: currentYear, text: currentYear.toString() },
-  { value: currentYear - 1, text: (currentYear - 1).toString() },
-]);
+const fiscalYearChoices = ref(
+  Array.from({ length: 9 }, (_, i) => {
+    const y = currentYear - 5 + i;
+    return { value: y, text: y.toString() };
+  })
+);
 
 // Month selector (Jan-Dec)
 const monthChoices = ref([
@@ -139,21 +138,46 @@ const monthChoices = ref([
 ]);
 const selectedMonth = ref(new Date().getMonth() + 1);
 
-// Routing
-const route = useRoute();
+// Restore saved filters
+const savedFilters = filterStore.getFilters(PAGE_KEY);
+if (savedFilters) {
+  if (savedFilters.fiscalYear) selectedFiscalYear.value = savedFilters.fiscalYear;
+  if (savedFilters.month) selectedMonth.value = savedFilters.month;
+  if (savedFilters.searchText) pagination.queryParams.searchText = savedFilters.searchText;
+}
 
-// Placeholder: load/reload data based on params/state
-const reloadData = () => {
-  const params = {
-    accountNumber: route.params.accountNumber,
+const saveFilters = () => {
+  filterStore.saveFilters(PAGE_KEY, {
     fiscalYear: selectedFiscalYear.value,
     month: selectedMonth.value,
     searchText: pagination.queryParams.searchText,
-    orderBy: pagination.queryParams.orderBy,
-    orderDesc: pagination.queryParams.orderDesc,
-  };
-  console.log('Reloading reconciliation detail with params:', params);
-  // TODO: wire to API
+  });
+};
+
+// Routing
+const route = useRoute();
+
+const reloadData = async () => {
+  try {
+    const params = {
+      fiscalYear: selectedFiscalYear.value,
+      period: selectedMonth.value,
+    };
+    if (pagination.queryParams.searchText) params.searchText = pagination.queryParams.searchText;
+    const response = await api.get('account-reconciliation', { params });
+    pagination.results = (response.data || []).map(r => ({
+      ...r,
+      id: r.accountNumber,
+      enabled: true,
+      isCashAccount: false,
+      link: '',
+      cfoRestricted: false,
+      fiscalYear: selectedFiscalYear.value,
+    }));
+    saveFilters();
+  } catch (err) {
+    console.error('Failed to fetch reconciliation data:', err);
+  }
 };
 
 onMounted(() => {
@@ -168,6 +192,8 @@ onMounted(() => {
 // Watchers to trigger reloads
 watch(() => selectedFiscalYear.value, () => reloadData());
 watch(() => selectedMonth.value, () => reloadData());
+
+onBeforeUnmount(saveFilters);
 
 // (Removed currentAccount; header no longer shows per-account badges)
 

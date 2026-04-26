@@ -9,6 +9,7 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         includePaths: ['node_modules'],
+        silenceDeprecations: ['import', 'global-builtin', 'color-functions', 'slash-div'],
       },
     },
   },

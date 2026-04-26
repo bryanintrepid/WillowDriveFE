@@ -94,7 +94,7 @@
                                     <template v-for="(transaction, index) in pagination.results" :key="transaction.batch">
                                         <tr :class="{ 'table-light': index % 2 !== 0 }">
                                             <td>
-                                                <button class="btn btn-sm btn-icon me-1" @click="transaction.expanded = !transaction.expanded">
+                                                <button class="btn btn-sm btn-icon me-1" @click="toggleExpand(transaction)">
                                                 <i :class="transaction.expanded ? 'ri-subtract-line' : 'ri-add-line'"></i>
                                                 </button>
                                                 <router-link :to="{ name: 'accounting-batch-detail', params: { companyName: 'Willow Drive Nursery', fiscalYear: getFiscalYear(transaction.transactionDate), batchNumber: transaction.batch } }">
@@ -164,17 +164,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 
 import FiscalYearChooser from '../../components/FiscalYearChooser.vue';
 import ClearableSearchInput from '../../components/ClearableSearchInput.vue';
 import Paginate from '../../components/Paginate.vue';
+import api from '../../services/api';
+import { useFilterStore } from '../../stores/filterStore';
 
+const filterStore = useFilterStore();
+const PAGE_KEY = 'generalLedger';
 const router = useRouter();
-
-// --- Page Header --- 
-
 
 // --- Reactive State ---
 const queryParams = reactive({
@@ -188,40 +189,12 @@ const queryParams = reactive({
 });
 
 const pagination = reactive({
-  results: [
-    // Sample Data - Replace with API call
-    {
-      batch: '2024-001',
-      journal: 1,
-      transactionDate: '2024-07-28T00:00:00',
-      totalDebit: 1500.00,
-      totalCredit: 1500.00,
-      description: 'Sample journal entry for office supplies',
-      creator: 'user1',
-      expanded: false,
-      reversedBy: null,
-      glDetails: [
-        { id: 1, account: { accountNumber: '60100', description: 'Office Supplies' }, debit: 1500.00, credit: 0, description: 'Pens and paper' },
-        { id: 2, account: { accountNumber: '10100', description: 'Cash in Bank' }, debit: 0, credit: 1500.00, description: 'Payment for supplies' },
-      ]
-    },
-    {
-      batch: '2024-002',
-      journal: 2,
-      transactionDate: '2024-07-27T00:00:00',
-      totalDebit: 5000.00,
-      totalCredit: 5000.00,
-      description: 'Sales invoice #INV-123',
-      creator: 'user2',
-      expanded: false,
-      reversedBy: { batch: '2024-003' },
-      glDetails: [
-        { id: 3, account: { accountNumber: '12000', description: 'Accounts Receivable' }, debit: 5000.00, credit: 0, description: 'Sale to Customer A' },
-        { id: 4, account: { accountNumber: '40100', description: 'Sales Revenue' }, debit: 0, credit: 5000.00, description: 'Product sales' },
-      ]
-    }
-  ],
-  // ... other pagination properties like total, perPage, etc.
+  itemCount: 0,
+  queryParams: {
+    pageNumber: 1,
+    pageSize: 50,
+  },
+  results: [],
 });
 
 const journalNames = {
@@ -233,27 +206,128 @@ const journalNames = {
   6: 'Payroll'
 };
 
+const journalMap = {
+  generalJournal: 1,
+  salesJournal: 2,
+  cashDisbursementsJournal: 3,
+  purchaseJournal: 4,
+  cashReceiptsJournal: 5,
+  payrollJournal: 6,
+};
+
 const currentYear = new Date().getFullYear();
 const selectedFiscalYear = ref(currentYear);
-const fiscalYearChoices = ref([
-  { value: currentYear + 1, text: (currentYear + 1).toString() },
-  { value: currentYear, text: currentYear.toString() },
-  { value: currentYear - 1, text: (currentYear - 1).toString() },
-]);
+const fiscalYearChoices = ref(
+  Array.from({ length: 9 }, (_, i) => {
+    const y = currentYear - 5 + i;
+    return { value: y, text: y.toString() };
+  })
+);
+
+let searchTimeout = null;
+
+// Restore saved filters
+const saved = filterStore.getFilters(PAGE_KEY);
+if (saved) {
+  if (saved.fiscalYear) selectedFiscalYear.value = saved.fiscalYear;
+  if (saved.searchText) queryParams.searchText = saved.searchText;
+  if (saved.pageNumber) pagination.queryParams.pageNumber = saved.pageNumber;
+  if (saved.pageSize) pagination.queryParams.pageSize = saved.pageSize;
+  if (saved.journals) {
+    for (const [key, val] of Object.entries(saved.journals)) {
+      if (key in queryParams) queryParams[key] = val;
+    }
+  }
+}
+
+const saveFilters = () => {
+  filterStore.saveFilters(PAGE_KEY, {
+    fiscalYear: selectedFiscalYear.value,
+    searchText: queryParams.searchText,
+    pageNumber: pagination.queryParams.pageNumber,
+    pageSize: pagination.queryParams.pageSize,
+    journals: {
+      generalJournal: queryParams.generalJournal,
+      salesJournal: queryParams.salesJournal,
+      cashDisbursementsJournal: queryParams.cashDisbursementsJournal,
+      purchaseJournal: queryParams.purchaseJournal,
+      cashReceiptsJournal: queryParams.cashReceiptsJournal,
+      payrollJournal: queryParams.payrollJournal,
+    },
+  });
+};
 
 // --- Methods ---
-const fetchData = () => {
-  console.log('Fetching data with params:', { ...queryParams, year: selectedFiscalYear.value });
-  // API call to fetch transactions would go here
+const getSelectedJournals = () => {
+  const selected = [];
+  for (const [key, val] of Object.entries(journalMap)) {
+    if (queryParams[key]) selected.push(val);
+  }
+  return selected;
+};
+
+const fetchData = async () => {
+  try {
+    const journals = getSelectedJournals();
+    const params = {
+      page: pagination.queryParams.pageNumber,
+      pageSize: pagination.queryParams.pageSize,
+    };
+    if (journals.length > 0 && journals.length < 6) {
+      params.journals = journals.join(',');
+    }
+    if (queryParams.searchText) params.search = queryParams.searchText;
+    const response = await api.get(`transactions/${selectedFiscalYear.value}`, { params });
+    const data = response.data;
+    pagination.results = (data.items || []).map(t => ({
+      ...t,
+      expanded: false,
+      glDetails: [],
+      reversedBy: null,
+    }));
+    pagination.itemCount = data.totalCount || 0;
+    saveFilters();
+  } catch (err) {
+    console.error('Failed to fetch transactions:', err);
+  }
+};
+
+const loadDetails = async (transaction) => {
+  if (transaction.glDetails?.length) return;
+  try {
+    const response = await api.get(`transactions/${selectedFiscalYear.value}`, {
+      params: { search: transaction.batch, page: 1, pageSize: 1 }
+    });
+    // Use the batch detail endpoint if available, otherwise parse from the list
+    // For now, we'll load details via the batch detail endpoint
+    const batchResponse = await api.get(`batch/${selectedFiscalYear.value}/${transaction.batch}`);
+    const batchData = batchResponse.data;
+    transaction.glDetails = (batchData.lines || []).map(d => ({
+      id: d.glDetailId,
+      account: { accountNumber: d.accountNumber, description: d.accountDescription || '' },
+      debit: d.debit || 0,
+      credit: d.credit || 0,
+      description: d.description || '',
+    }));
+  } catch (err) {
+    console.error('Failed to load batch details:', err);
+  }
+};
+
+const toggleExpand = async (transaction) => {
+  transaction.expanded = !transaction.expanded;
+  if (transaction.expanded) await loadDetails(transaction);
 };
 
 const sortBy = (field) => {
-  console.log(`Sorting by ${field}`);
-  // Add sorting logic and re-fetch data
+  // Server-side sorting not yet implemented; re-fetch resets
+  fetchData();
 };
 
 const getFiscalYear = (dateString) => {
-  return new Date(dateString).getFullYear();
+  if (!dateString) return selectedFiscalYear.value;
+  const d = new Date(dateString);
+  return d.getMonth() >= 6 ? d.getFullYear() + 1 : d.getFullYear();
 };
 
 const copyBatch = (transaction) => {
@@ -270,12 +344,10 @@ const copyBatch = (transaction) => {
 
 const printBatch = (transaction) => {
     console.log(`Printing batch ${transaction.batch}`);
-    // Logic to open a new tab with the printable report
 }
 
 const print = () => {
     console.log('Printing transaction register');
-    // Logic to open a new tab with the printable report
 }
 
 const formatDate = (dateString) => {
@@ -290,12 +362,39 @@ const formatCurrency = (value) => {
 };
 
 // --- Watchers ---
-watch([queryParams, selectedFiscalYear], () => {
+// Journal checkboxes and fiscal year: reset page and fetch immediately
+watch([
+  () => queryParams.generalJournal,
+  () => queryParams.salesJournal,
+  () => queryParams.cashDisbursementsJournal,
+  () => queryParams.purchaseJournal,
+  () => queryParams.cashReceiptsJournal,
+  () => queryParams.payrollJournal,
+  selectedFiscalYear,
+], () => {
+  pagination.queryParams.pageNumber = 1;
   fetchData();
-}, { deep: true });
+});
 
-// Initial data fetch
-fetchData();
+// Search text: debounce
+watch(() => queryParams.searchText, () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    pagination.queryParams.pageNumber = 1;
+    fetchData();
+  }, 350);
+});
+
+// Paginator page/size changes
+watch(() => pagination.queryParams.pageNumber, fetchData);
+watch(() => pagination.queryParams.pageSize, () => {
+  pagination.queryParams.pageNumber = 1;
+  fetchData();
+});
+
+// --- Initial Load ---
+onMounted(fetchData);
+onBeforeUnmount(saveFilters);
 
 </script>
 

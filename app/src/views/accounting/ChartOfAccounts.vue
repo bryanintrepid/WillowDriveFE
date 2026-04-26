@@ -17,9 +17,8 @@
             <div class="d-flex flex-wrap align-items-center gap-2">
               <div class="flex-grow-1">
                 <button class="btn btn-primary btn-sm" @click="openTrialBalanceModal"><i class="ri-download-2-line align-bottom"></i> Trial Balance</button>
-                <button class="btn btn-secondary btn-sm ms-1" @click="openLockPeriodModal"><i class="ri-calendar-check-line align-bottom"></i> Lock Period</button>
-                <button class="btn btn-secondary btn-sm ms-1" v-if="hasPermission('comptroller')" @click="openUnlockPeriodModal"><i class="ri-calendar-todo-line align-bottom"></i> Unlock Period</button>
-                <button class="btn btn-info btn-sm ms-1" v-if="hasPermission('comptroller')" @click="moveIncomeBalancesToRetainedEarnings"><i class="ri-arrow-right-circle-line align-bottom"></i> Move Balances</button>
+                <button class="btn btn-outline-secondary btn-sm ms-1" @click="expandAll" title="Expand All"><i class="ri-arrow-down-s-fill align-bottom"></i> Expand All</button>
+                <button class="btn btn-outline-secondary btn-sm ms-1" @click="collapseAll" title="Collapse All"><i class="ri-arrow-right-s-fill align-bottom"></i> Collapse All</button>
               </div>
               <div class="flex-shrink-0 d-flex align-items-center gap-2">
                  <FiscalYearChooser v-model="selectedFiscalYear" :fiscal-year-choices="fiscalYearChoices" />
@@ -88,93 +87,114 @@
 
     
 
-    <div class="card" v-if="pagination.results.length">
+    <div class="card">
       <div class="card-body">
-        <div class="table-responsive">
-          <table class="table table-nowrap align-middle">
-      <thead>
-        <tr>
-          <th style="width: 15%" @click="sortBy('accountnumber')">Account Number</th>
-          <th style="width: 10%" @click="sortBy('accountTypeId')">Account Type</th>
-          <th style="width: 15%; text-align:center">Account Locks</th>
-          <th style="width: 60%" @click="sortBy('description')">Description</th>
-          <th style="width: 10%" @click="sortBy('modified')">Modified</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="account in pagination.results" :key="account.accountNumber">
-          <td>
-            <router-link :to="{ name: 'accounting-detail', params: { fiscalYear: account.fiscalYear, accountNumber: account.accountNumber } }">
-              {{ account.accountNumber }}
-            </router-link>
-          </td>
-          <td>
-            <EditCard
-              :ref="el => { if (el) editCardRefs[account.id] = el }"
-              :model-value="account"
-              @save="(updatedAccount) => handleAccountUpdate(account, updatedAccount, '')"
-              :permission-denied="!hasPermission('CanEditChartOfAccounts')"
-              tooltip-text="Edit account details"
-            >
-              <template #summary>
-                {{ getAccountTypeName(account.accountTypeId) }}
-              </template>
-              <template #form="{ model }">
-                <select v-model="model.accountTypeId" class="form-select form-select-sm">
-                  <option v-for="type in accountTypeChoices" :key="type.accountTypeId" :value="type.accountTypeId">
-                    {{ type.name }}
-                  </option>
-                </select>
-              </template>
-            </EditCard>
-          </td>
-          <td style="text-align:center;">
-            <span class="badge" :class="account.locked ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'" style="cursor: pointer;"
-                  @click="account.locked ? unlockAccount(account) : lockAccount(account)"
-                  :title="account.locked ? 'Click to unlock' : 'Click to lock'">
-              <i :class="account.locked ? 'ri-lock-fill' : 'ri-lock-unlock-fill'" class="align-middle"></i>
-              {{ account.locked ? 'Locked' : 'Unlocked' }}
-            </span>
-          </td>
-          <td>
-            <EditCard
-              :ref="el => { if (el) editCardRefs[account.id + '_desc'] = el }"
-              :model-value="account"
-              @save="(updatedAccount) => handleAccountUpdate(account, updatedAccount, '_desc')"
-              :permission-denied="!hasPermission('CanEditChartOfAccounts')"
-              tooltip-text="Edit account details"
-            >
-              <template #summary>
-                {{ account.description }}
-              </template>
-              <template #form="{ model }">
-                <input type="text" v-model="model.description" class="form-control form-control-sm" />
-              </template>
-            </EditCard>
-          </td>
-          <td>{{ formatMoment(account.modified) }}</td>
-        </tr>
-      </tbody>
-    </table>
+        <div v-if="!allAccounts.length && !loading" class="text-center my-4">
+          <p class="text-muted fs-15">No accounts found for FY {{ selectedFiscalYear }}</p>
         </div>
-        <div v-if="!pagination.results.length" class="text-center my-4">
-          <p class="text-muted fs-15">No accounts found</p>
+        <div v-else-if="loading" class="text-center my-4">
+          <p class="text-muted fs-15">Loading...</p>
         </div>
-        <Paginate :paginator="pagination" @update:paginator="Object.assign(pagination, $event)" v-if="pagination.results.length > 0" />
+        <div v-else class="table-responsive">
+          <table class="table table-nowrap align-middle table-sm">
+            <thead>
+              <tr>
+                <th style="width: 18%;">Account Number</th>
+                <th style="width: 10%;">Account Type</th>
+                <th style="width: 57%;">Description</th>
+                <th style="width: 15%;">Modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="row in flattenedTree" :key="row.accountNumber">
+                <tr v-if="row.visible" :class="{ 'fw-semibold': row.isRollup }">
+                  <td>
+                    <span :style="{ paddingLeft: (row.level * 20) + 'px' }" class="d-inline-flex align-items-center">
+                      <button v-if="row.hasChildren" class="btn btn-sm btn-icon me-1 p-0" @click="toggleNode(row)" style="width: 18px; height: 18px;">
+                        <i :class="row.expanded ? 'ri-arrow-down-s-fill' : 'ri-arrow-right-s-fill'" class="fs-14"></i>
+                      </button>
+                      <span v-else style="width: 18px; display: inline-block;" class="me-1"></span>
+                      <router-link :to="{ name: 'accounting-detail', params: { fiscalYear: row.fiscalYear, accountNumber: row.accountNumber } }">
+                        {{ row.accountNumber }}
+                      </router-link>
+                    </span>
+                  </td>
+                  <td>
+                    <EditCard
+                      :ref="el => { if (el) editCardRefs[row.accountNumber] = el }"
+                      :model-value="row"
+                      @save="(updated) => handleAccountUpdate(row, updated, '')"
+                      :permission-denied="!hasPermission('CanEditChartOfAccounts')"
+                      tooltip-text="Edit account type"
+                    >
+                      <template #summary>
+                        {{ getAccountTypeName(row.accountTypeId) }}
+                      </template>
+                      <template #form="{ model }">
+                        <select v-model="model.accountTypeId" class="form-select form-select-sm">
+                          <option v-for="type in accountTypeChoices" :key="type.accountTypeId" :value="type.accountTypeId">
+                            {{ type.name }}
+                          </option>
+                        </select>
+                      </template>
+                    </EditCard>
+                  </td>
+                  <td>
+                    <span :style="{ paddingLeft: (row.level * 20) + 'px' }">
+                      <EditCard
+                        :ref="el => { if (el) editCardRefs[row.accountNumber + '_desc'] = el }"
+                        :model-value="row"
+                        @save="(updated) => handleAccountUpdate(row, updated, '_desc')"
+                        :permission-denied="!hasPermission('CanEditChartOfAccounts')"
+                        tooltip-text="Edit description"
+                      >
+                        <template #summary>
+                          {{ row.description }}
+                        </template>
+                        <template #form="{ model }">
+                          <input type="text" v-model="model.description" class="form-control form-control-sm" />
+                        </template>
+                      </EditCard>
+                    </span>
+                  </td>
+                  <td><small class="text-muted">{{ formatMoment(row.modified) }}</small></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+      <div ref="toastEl" class="toast align-items-center border-0" :class="toastClass" role="alert">
+        <div class="d-flex">
+          <div class="toast-body text-white">{{ toastMessage }}</div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, watch, onMounted, onBeforeUnmount } from 'vue';
+import { Toast } from 'bootstrap';
 import FiscalYearChooser from '../../components/FiscalYearChooser.vue';
 import EditCard from '../../components/EditCard.vue';
 import FilterTag from '../../components/FilterTag.vue';
 import ClearableSearchInput from '../../components/ClearableSearchInput.vue';
 import Paginate from '../../components/Paginate.vue';
+import api from '../../services/api';
+import { useFilterStore } from '../../stores/filterStore';
+
+const filterStore = useFilterStore();
+const PAGE_KEY = 'chartOfAccounts';
 
 const editCardRefs = ref({});
+const allAccounts = ref([]);
+const loading = ref(false);
 
 // --- Reactive State ---
 const adding = ref(false);
@@ -185,52 +205,177 @@ const newAccount = ref({
 });
 
 const pagination = reactive({
-  results: [
-    // Sample data - replace with API call
-    { accountNumber: '10100', accountTypeId: 1, description: 'Cash in Bank', modified: new Date(), locked: false, fiscalYear: 2024 },
-    { accountNumber: '40100', accountTypeId: 4, description: 'Sales Revenue', modified: new Date(), locked: true, fiscalYear: 2024 },
-  ],
+  itemCount: 0,
   queryParams: {
+    pageNumber: 1,
+    pageSize: 50,
     searchText: '',
     orderBy: 'accountnumber',
     orderDesc: false,
   },
+  results: [],
 });
 
 const accountTypeChoices = ref([
-  // Sample data - replace with API call
-  { accountTypeId: 1, name: 'Asset' },
-  { accountTypeId: 2, name: 'Liability' },
-  { accountTypeId: 3, name: 'Equity' },
-  { accountTypeId: 4, name: 'Revenue' },
-  { accountTypeId: 5, name: 'Expense' },
+  { accountTypeId: 0, name: 'Asset' },
+  { accountTypeId: 1, name: 'Liability' },
+  { accountTypeId: 2, name: 'Equity' },
+  { accountTypeId: 3, name: 'Revenue' },
+  { accountTypeId: 4, name: 'Expense' },
 ]);
 
 const currentYear = new Date().getFullYear();
-const selectedFiscalYear = ref(currentYear);
-const fiscalYearChoices = ref([
-  { value: currentYear + 1, text: (currentYear + 1).toString() },
-  { value: currentYear, text: currentYear.toString() },
-  { value: currentYear - 1, text: (currentYear - 1).toString() },
-]);
+// FY convention: FY 2026 = July 2025 - June 2026. If we're in July+ we're in the next FY.
+const defaultFY = new Date().getMonth() >= 6 ? currentYear + 1 : currentYear;
+const selectedFiscalYear = ref(defaultFY);
+const fiscalYearChoices = ref(
+  Array.from({ length: 9 }, (_, i) => {
+    const y = currentYear - 5 + i;
+    return { value: y, text: y.toString() };
+  })
+);
+
+// Restore saved filters
+const saved = filterStore.getFilters(PAGE_KEY);
+if (saved) {
+  if (saved.fiscalYear) selectedFiscalYear.value = saved.fiscalYear;
+  if (saved.searchText) pagination.queryParams.searchText = saved.searchText;
+  if (saved.pageNumber) pagination.queryParams.pageNumber = saved.pageNumber;
+  if (saved.pageSize) pagination.queryParams.pageSize = saved.pageSize;
+}
+
+const saveFilters = () => {
+  filterStore.saveFilters(PAGE_KEY, {
+    fiscalYear: selectedFiscalYear.value,
+    searchText: pagination.queryParams.searchText,
+    pageNumber: pagination.queryParams.pageNumber,
+    pageSize: pagination.queryParams.pageSize,
+  });
+};
+
+// --- Tree ---
+const flattenedTree = ref([]);
+const expandedNodes = reactive(new Set());
+
+const flattenTree = (nodes, level = 0) => {
+  const result = [];
+  for (const node of nodes) {
+    const hasChildren = node.children && node.children.length > 0;
+    const expanded = expandedNodes.has(node.accountNumber);
+    result.push({
+      ...node,
+      level,
+      hasChildren,
+      expanded,
+      visible: true,
+    });
+    if (hasChildren && expanded) {
+      result.push(...flattenTree(node.children, level + 1));
+    }
+  }
+  return result;
+};
+
+const rebuildFlatTree = () => {
+  const q = (pagination.queryParams.searchText || '').toLowerCase().trim();
+  if (q) {
+    // When searching, show flat filtered results (no tree)
+    const allFlat = flattenAllAccounts(allAccounts.value);
+    flattenedTree.value = allFlat.filter(a =>
+      a.accountNumber.toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q)
+    ).map(a => ({ ...a, level: 0, hasChildren: false, expanded: false, visible: true }));
+  } else {
+    flattenedTree.value = flattenTree(allAccounts.value);
+  }
+};
+
+const flattenAllAccounts = (nodes) => {
+  const result = [];
+  for (const node of nodes) {
+    result.push(node);
+    if (node.children && node.children.length > 0) {
+      result.push(...flattenAllAccounts(node.children));
+    }
+  }
+  return result;
+};
+
+const toggleNode = (row) => {
+  if (expandedNodes.has(row.accountNumber)) {
+    expandedNodes.delete(row.accountNumber);
+  } else {
+    expandedNodes.add(row.accountNumber);
+  }
+  rebuildFlatTree();
+};
+
+const expandAll = () => {
+  const addAll = (nodes) => {
+    for (const n of nodes) {
+      if (n.children && n.children.length > 0) {
+        expandedNodes.add(n.accountNumber);
+        addAll(n.children);
+      }
+    }
+  };
+  addAll(allAccounts.value);
+  rebuildFlatTree();
+};
+
+const collapseAll = () => {
+  expandedNodes.clear();
+  rebuildFlatTree();
+};
 
 // --- Methods ---
+const enrichNode = (a) => ({
+  ...a,
+  id: a.accountNumber,
+  accountTypeId: a.type ?? 0,
+  modified: a.dateModified,
+  fiscalYear: a.fiscalYear || selectedFiscalYear.value,
+  children: (a.children || []).map(enrichNode),
+});
+
+const fetchData = async () => {
+  loading.value = true;
+  try {
+    const response = await api.get('accounts', { params: { fiscalYear: selectedFiscalYear.value } });
+    allAccounts.value = (response.data || []).map(enrichNode);
+    expandAll();
+    saveFilters();
+  } catch (err) {
+    console.error('Failed to fetch accounts:', err);
+  } finally {
+    loading.value = false;
+  }
+};
 
 // Permission check placeholder
 const hasPermission = (role) => {
-  // Replace with actual permission logic (e.g., from a user store)
-  const userRoles = ['accounting', 'comptroller']; // Mock roles
+  const userRoles = ['accounting', 'comptroller'];
   return userRoles.includes(role);
 };
 
+// --- Toast ---
+const toastEl = ref(null);
+const toastMessage = ref('');
+const toastClass = ref('bg-success');
+let toastInstance = null;
+const showToast = (message, type = 'success') => {
+  toastMessage.value = message;
+  toastClass.value = type === 'success' ? 'bg-success' : 'bg-danger';
+  if (toastEl.value) {
+    if (!toastInstance) toastInstance = new Toast(toastEl.value, { delay: 3000 });
+    toastInstance.show();
+  }
+};
+
 const openTrialBalanceModal = () => alert('Open Trial Balance Modal');
-const openLockPeriodModal = () => alert('Open Lock Period Modal');
-const openUnlockPeriodModal = () => alert('Open Unlock Period Modal');
-const moveIncomeBalancesToRetainedEarnings = () => alert('Move Balances to Retained Earnings');
 
 const getUnpagedQueryParamsString = () => {
-  // Logic to serialize query params for the print link
-  return JSON.stringify(pagination.queryParams);
+  return JSON.stringify({ ...pagination.queryParams, fiscalYear: selectedFiscalYear.value });
 };
 
 const startAdding = () => {
@@ -239,7 +384,6 @@ const startAdding = () => {
 
 const stopAdding = () => {
   adding.value = false;
-  // Reset form
   newAccount.value = { accountNumber: '', accountTypeId: null, description: '' };
 };
 
@@ -249,72 +393,54 @@ const createAccount = () => {
     return;
   }
   console.log('Creating account:', newAccount.value);
-  // Add API call logic here
-  stopAdding(); // Close form on successful creation
+  stopAdding();
 };
 
-const sortBy = (field) => {
-  if (pagination.queryParams.orderBy === field) {
-    pagination.queryParams.orderDesc = !pagination.queryParams.orderDesc;
-  } else {
-    pagination.queryParams.orderBy = field;
-    pagination.queryParams.orderDesc = false;
-  }
-  // Add logic to re-fetch data from API with new sort order
-  console.log(`Sorting by ${field}, descending: ${pagination.queryParams.orderDesc}`);
-};
 
 const getAccountTypeName = (typeId) => {
   const type = accountTypeChoices.value.find(t => t.accountTypeId === typeId);
   return type ? type.name : 'Unknown';
 };
 
-const lockAccount = (account) => {
-  console.log('Locking account:', account.accountNumber);
-  // Add API call logic here
-  account.locked = true; // Optimistic update
-};
-
-const unlockAccount = (account) => {
-  console.log('Unlocking account:', account.accountNumber);
-  // Add API call logic here
-  account.locked = false; // Optimistic update
-};
 
 const formatMoment = (date) => {
-  // Replace with a proper date formatting library like date-fns or dayjs
   if (!date) return '';
   return new Date(date).toLocaleDateString();
 };
 
 const handleAccountUpdate = async (originalAccount, updatedAccountData, refSuffix = '') => {
   console.log('Saving account:', updatedAccountData);
-  // --- API Call Placeholder ---
-  // In a real app, you would make an API call here:
-  // try {
-  //   const response = await api.updateAccount(originalAccount.id, updatedAccountData);
-  //   Object.assign(originalAccount, response.data);
-  //   editCardRefs.value[originalAccount.id + refSuffix]?.finishEditing();
-  // } catch (error) {
-  //   console.error('Failed to update account:', error);
-  // }
-
-  // --- Mock Success for Demonstration ---
-  // Merge the updated data into the original account object.
   Object.assign(originalAccount, updatedAccountData);
-
-  // Find the correct EditCard instance using its ref and call finishEditing to close the form.
   const refKey = originalAccount.id + refSuffix;
   if (editCardRefs.value[refKey]) {
     editCardRefs.value[refKey].finishEditing();
   } else {
-    // Fallback for the other ref if one isn't explicitly provided
     const fallbackRefKey = originalAccount.id + (refSuffix === '' ? '_desc' : '');
     if (editCardRefs.value[fallbackRefKey]) {
        editCardRefs.value[fallbackRefKey].finishEditing();
     }
   }
 };
+
+let searchTimeout = null;
+
+watch(() => pagination.queryParams.searchText, () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    rebuildFlatTree();
+    saveFilters();
+  }, 350);
+});
+
+watch(selectedFiscalYear, () => {
+  pagination.queryParams.pageNumber = 1;
+  fetchData();
+});
+
+
+onMounted(fetchData);
+
+onBeforeUnmount(saveFilters);
 
 </script>
 

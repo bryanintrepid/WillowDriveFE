@@ -6,6 +6,14 @@
         </div>
 
         <div class="d-flex align-items-center">
+          <div class="ms-3 header-item d-none d-sm-flex align-items-center">
+            <FiscalPeriodBadge />
+          </div>
+
+          <div class="ms-3 header-item d-none d-sm-flex">
+            <NotificationBell />
+          </div>
+
           <div class="ms-3 header-item d-none d-sm-flex">
             <button type="button" class="btn btn-icon btn-topbar btn-ghost-secondary rounded-circle" @click="initFullScreen">
               <i class='bx bx-fullscreen fs-22'></i>
@@ -37,6 +45,8 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMainStore } from '@/stores/mainStore'
+import FiscalPeriodBadge from '@/components/FiscalPeriodBadge.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const router = useRouter()
 const mainStore = useMainStore()

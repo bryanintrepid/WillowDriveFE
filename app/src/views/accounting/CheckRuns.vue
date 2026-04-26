@@ -11,7 +11,10 @@
             <li class="breadcrumb-item active" aria-current="page">Check Runs</li>
           </ol>
         </div>
-        <div class="dashhead-toolbar">
+        <div class="d-flex align-items-center gap-2">
+          <div style="width: 250px;">
+            <input type="text" class="form-control form-control-sm" v-model="searchText" placeholder="Search check runs..." />
+          </div>
           <router-link :to="{ name: 'accounting-payables-checkrun-detail', params: { checkRunId: 0 } }" class="btn btn-primary">
             <i class="ri-add-line align-bottom"></i> Create Check Run
           </router-link>
@@ -30,13 +33,13 @@
               <table class="table table-nowrap align-middle">
                 <thead>
                   <tr>
-                    <th @click="sortBy('checkrunid')">Check Run #</th>
-                    <th @click="sortBy('paymentdate')">Payment Date</th>
-                    <th @click="sortBy('checkingaccountname')">Checking Account</th>
-                    <th @click="sortBy('controlaccountname')">Control Account</th>
-                    <th @click="sortBy('postingdate')">Posting Date</th>
-                    <th @click="sortBy('creator')">Created By</th>
-                    <th @click="sortBy('created')">Created On</th>
+                    <th>Check Run #</th>
+                    <th>Payment Date</th>
+                    <th>Checking Account</th>
+                    <th>Control Account</th>
+                    <th>Posting Date</th>
+                    <th>Created By</th>
+                    <th>Created On</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -62,7 +65,7 @@
                 </tbody>
               </table>
             </div>
-            <Paginate v-if="pagination.results.length" :pagination="pagination" @page-changed="handlePageChange" class="mt-4" />
+            <Paginate v-if="pagination.itemCount > 0" :paginator="pagination" @update:paginator="onPaginatorUpdate" class="mt-4" />
           </div>
         </div>
       </div>
@@ -71,63 +74,83 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue';
+import { ref, reactive, watch, onMounted, onBeforeUnmount } from 'vue';
 import Paginate from '@/components/Paginate.vue';
+import api from '../../services/api';
+import { useFilterStore } from '../../stores/filterStore';
 
-const queryParams = reactive({
-  orderBy: 'created',
-  orderDesc: true,
-});
+const filterStore = useFilterStore();
+const PAGE_KEY = 'checkRuns';
+
+const searchText = ref('');
+let searchTimeout = null;
 
 const pagination = reactive({
-  currentPage: 1,
-  totalPages: 1,
-  results: [
-    {
-      apCheckRunId: 101,
-      paymentDate: '2023-10-26T00:00:00Z',
-      bankCheckingAccount: { description: 'Main Checking' },
-      controlAccount: { description: 'Accounts Payable' },
-      batchInfo: { transactionDate: '2023-10-27T00:00:00Z', posted: false },
-      creator: 'John Doe',
-      dateCreated: '2023-10-26T14:30:00Z',
-    },
-    {
-      apCheckRunId: 102,
-      paymentDate: '2023-11-01T00:00:00Z',
-      bankCheckingAccount: { description: 'Operating Account' },
-      controlAccount: { description: 'Accounts Payable' },
-      batchInfo: { transactionDate: '2023-11-02T00:00:00Z', posted: true },
-      creator: 'Jane Smith',
-      dateCreated: '2023-11-01T10:00:00Z',
-    },
-  ],
+  itemCount: 0,
+  queryParams: {
+    pageNumber: 1,
+    pageSize: 50,
+  },
+  results: [],
 });
 
+// Restore saved filters
+const saved = filterStore.getFilters(PAGE_KEY);
+if (saved) {
+  if (saved.searchText) searchText.value = saved.searchText;
+  if (saved.pageNumber) pagination.queryParams.pageNumber = saved.pageNumber;
+  if (saved.pageSize) pagination.queryParams.pageSize = saved.pageSize;
+}
+
+const saveFilters = () => {
+  filterStore.saveFilters(PAGE_KEY, {
+    searchText: searchText.value,
+    pageNumber: pagination.queryParams.pageNumber,
+    pageSize: pagination.queryParams.pageSize,
+  });
+};
+
 // --- Methods ---
-const sortBy = (field) => {
-  if (queryParams.orderBy === field) {
-    queryParams.orderDesc = !queryParams.orderDesc;
-  } else {
-    queryParams.orderBy = field;
-    queryParams.orderDesc = false;
+const fetchData = async () => {
+  try {
+    const params = {
+      page: pagination.queryParams.pageNumber,
+      pageSize: pagination.queryParams.pageSize,
+    };
+    if (searchText.value) params.search = searchText.value;
+    const response = await api.get('ap-check-runs', { params });
+    const data = response.data;
+    pagination.results = (data.items || []).map(r => ({
+      ...r,
+      bankCheckingAccount: { description: r.bankCheckingAccountDescription || r.bankCheckingAccountNumber },
+      controlAccount: { description: r.controlAccountDescription || r.controlAccountNumber },
+      batchInfo: { transactionDate: r.postingDate, posted: r.posted },
+    }));
+    pagination.itemCount = data.totalCount || 0;
+    saveFilters();
+  } catch (err) {
+    console.error('Failed to fetch check runs:', err);
   }
-  // In a real app, you would fetch data here based on the new sort order.
-  console.log(`Sorting by ${field}, descending: ${queryParams.orderDesc}`);
 };
 
-const deleteCheckRun = (checkRunId) => {
-  if (window.confirm(`Are you sure you want to delete check run #${checkRunId}? This action cannot be undone.`)) {
-    // In a real app, you would make an API call to delete the check run.
-    console.log('Deleting check run:', checkRunId);
-    pagination.results = pagination.results.filter(r => r.apCheckRunId !== checkRunId);
+const onPaginatorUpdate = (updated) => {
+  const oldPage = pagination.queryParams.pageNumber;
+  const oldSize = pagination.queryParams.pageSize;
+  Object.assign(pagination, updated);
+  if (pagination.queryParams.pageNumber !== oldPage || pagination.queryParams.pageSize !== oldSize) {
+    if (pagination.queryParams.pageSize !== oldSize) pagination.queryParams.pageNumber = 1;
+    fetchData();
   }
 };
 
-const handlePageChange = (page) => {
-  pagination.currentPage = page;
-  // In a real app, you would fetch data for the new page.
-  console.log('Fetching data for page:', page);
+const deleteCheckRun = async (checkRunId) => {
+  if (!window.confirm(`Are you sure you want to delete check run #${checkRunId}? This action cannot be undone.`)) return;
+  try {
+    await api.delete(`ap-check-runs/${checkRunId}`);
+    await fetchData();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to delete check run');
+  }
 };
 
 const formatDate = (dateString) => {
@@ -135,6 +158,17 @@ const formatDate = (dateString) => {
   const options = { year: 'numeric', month: 'short', day: 'numeric' };
   return new Date(dateString).toLocaleDateString(undefined, options);
 };
+
+watch(searchText, () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    pagination.queryParams.pageNumber = 1;
+    fetchData();
+  }, 350);
+});
+
+onMounted(fetchData);
+onBeforeUnmount(saveFilters);
 </script>
 
 <style scoped>

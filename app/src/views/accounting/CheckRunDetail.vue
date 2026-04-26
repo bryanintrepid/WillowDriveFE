@@ -199,15 +199,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Paginate from '@/components/Paginate.vue';
+import api from '../../services/api';
 
 const route = useRoute();
 const router = useRouter();
 
 // --- State ---
-const checkRunId = ref(route.params.checkRunId);
+const checkRunId = ref(parseInt(route.params.checkRunId) || 0);
 const isAdding = ref(false);
 const addingCheckRef = ref('');
 
@@ -218,34 +219,15 @@ const queryParams = reactive({
 
 const checkRun = reactive({
   apCheckRunId: checkRunId.value,
-  batchInfo: { posted: checkRunId.value % 2 === 0, batch: 12345 },
-  paymentDate: '2024-07-30T00:00:00',
+  batchInfo: { posted: false, batch: null },
+  paymentDate: '',
   companyId: 1,
 });
 
 const pagination = reactive({
   currentPage: 1,
   totalPages: 1,
-  results: [
-    {
-      apCheckId: 1,
-      checkReference: 'CK-001',
-      payee: 'Office Supplies Inc.',
-      miscellaneous: false,
-      vendor: { vendorId: 10, name: 'Office Supplies Inc.', vendorNumber: 'V1001', isDeleted: false, isDirectDepositEnabled: true },
-      checkAmount: 250.75,
-      payDate: '2024-07-29T00:00:00',
-      paymentMethod: 'Check',
-      checkNumber: '15001',
-      glBankCheckingAccount: { accountNumber: '10100', description: 'Main Checking', fiscalYear: 2024 },
-      dateModified: '2024-07-29T00:00:00',
-      isReversedIndependently: false,
-      expanded: false,
-      checkDetailLines: [
-        { invoiceReference: 'INV-123', amount: 150.00, discount: 0, netAmount: 150.00, glAccount: { accountNumber: '60100' }, invoiceDescription: 'Paper and pens' },
-      ]
-    },
-  ],
+  results: [],
 });
 
 // --- Computed Properties ---
@@ -255,7 +237,7 @@ const postedBatchRoute = computed(() => ({
   name: 'accounting-batch-detail',
   params: {
     companyName: 'default',
-    fiscalYear: new Date(checkRun.paymentDate).getFullYear(),
+    fiscalYear: checkRun.paymentDate ? new Date(checkRun.paymentDate).getFullYear() : new Date().getFullYear(),
     batchNumber: checkRun.batchInfo.batch,
   }
 }));
@@ -271,27 +253,136 @@ const miscCheckRoute = computed(() => ({
 }));
 
 // --- Methods ---
-const fetchData = () => console.log('Fetching check run details...');
-const sortBy = (field) => console.log(`Sorting by ${field}`);
-const handlePageChange = (page) => console.log(`Fetching page ${page}`);
+const fetchData = async () => {
+  if (!checkRunId.value || checkRunId.value === 0) return;
+  try {
+    const response = await api.get(`ap-check-runs/${checkRunId.value}`);
+    const data = response.data;
+    checkRun.apCheckRunId = data.apCheckRunId;
+    checkRun.batchInfo = { posted: data.posted, batch: data.postingBatch };
+    checkRun.paymentDate = data.paymentDate;
+    checkRun.companyId = data.companyId;
+    pagination.results = (data.checks || []).map(c => ({
+      ...c,
+      expanded: false,
+      vendor: { vendorId: c.vendorId, name: c.vendorName, vendorNumber: c.vendorNumber, isDeleted: c.vendorIsDeleted, isDirectDepositEnabled: false },
+      glBankCheckingAccount: { accountNumber: c.glBankCheckingAccountNumber, description: '', fiscalYear: new Date().getFullYear() },
+      isReversedIndependently: c.isReversed,
+      checkDetailLines: [],
+    }));
+  } catch (err) {
+    console.error('Failed to fetch check run:', err);
+  }
+};
+
+const sortBy = (field) => {
+  if (queryParams.orderBy === field) queryParams.orderDesc = !queryParams.orderDesc;
+  else { queryParams.orderBy = field; queryParams.orderDesc = false; }
+};
+const handlePageChange = (page) => { pagination.currentPage = page; };
 
 const startAdding = () => isAdding.value = true;
 const stopAdding = () => isAdding.value = false;
-const addCheck = () => {
-  console.log('Adding check:', addingCheckRef.value);
-  stopAdding();
+const addCheck = async () => {
+  // addingCheckRef would be a check ID to add to this run
+  const cid = parseInt(addingCheckRef.value);
+  if (!cid) { alert('Enter a valid check ID'); return; }
+  try {
+    await api.post(`ap-check-runs/${checkRunId.value}/add-check/${cid}`);
+    stopAdding();
+    await fetchData();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to add check');
+  }
 };
 
-const printReport = (reportType) => console.log(`Printing report: ${reportType}`);
-const postCheckRun = () => console.log('Posting check run...');
-const deleteCheckRun = () => window.confirm('Delete this entire check run?') && console.log('Deleting check run...');
-const reverseCheckRun = () => console.log('Reversing check run...');
-const printAllChecks = () => console.log('Printing all checks...');
-const printAchStubs = () => console.log('Printing ACH stubs...');
-const removeCheck = (check) => window.confirm(`Remove check ${check.checkReference}?`) && console.log('Removing check', check.apCheckId);
-const updatePaymentMethod = (check, method) => {
-  console.log(`Updating payment method for ${check.apCheckId} to ${method}`);
-  check.paymentMethod = method;
+const printReport = (reportType) => {
+  if (reportType === 'vendor-ach') {
+    window.open(`/api/ap-check-runs/${checkRunId.value}/ach-export`, '_blank');
+  } else {
+    alert(`Print report: ${reportType} (not yet implemented)`);
+  }
+};
+const postCheckRun = async () => {
+  if (!window.confirm('Post this check run? This will create a GL batch.')) return;
+  try {
+    const result = await api.post('ap-check-runs/post', {
+      apCheckRunId: checkRunId.value,
+      companyId: checkRun.companyId,
+      paymentDate: checkRun.paymentDate,
+      reverse: false,
+    });
+    alert(`Check run posted. Batch: ${result.data.batch}`);
+    await fetchData();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to post check run');
+  }
+};
+const deleteCheckRun = async () => {
+  if (!window.confirm('Delete this entire check run?')) return;
+  try {
+    await api.delete(`ap-check-runs/${checkRunId.value}`);
+    router.push({ name: 'accounting-check-runs' });
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to delete check run');
+  }
+};
+const reverseCheckRun = async () => {
+  if (!window.confirm('Reverse this check run? This will create a reversing GL batch.')) return;
+  try {
+    const result = await api.post('ap-check-runs/reverse', {
+      apCheckRunId: checkRunId.value,
+      companyId: checkRun.companyId,
+      paymentDate: checkRun.paymentDate,
+      reverse: true,
+    });
+    alert(`Check run reversed. Batch: ${result.data.batch}`);
+    await fetchData();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to reverse check run');
+  }
+};
+const printAllChecks = async () => {
+  try {
+    const response = await api.get(`ap-check-runs/${checkRunId.value}/print-data`);
+    const printData = response.data;
+    if (!printData.length) { alert('No checks to print.'); return; }
+    const printWindow = window.open('', '_blank');
+    let html = '<html><head><title>Check Print</title><style>body{font-family:monospace;} .check{page-break-after:always;padding:20px;} table{width:100%;border-collapse:collapse;} td,th{border:1px solid #ccc;padding:4px;text-align:left;}</style></head><body>';
+    for (const c of printData) {
+      html += `<div class="check"><h2>Check #${c.checkNumber || c.checkReference}</h2><p><strong>Pay to:</strong> ${c.payee || c.vendorName}</p><p>${c.street || ''} ${c.city || ''} ${c.state || ''} ${c.zip || ''}</p><p><strong>Amount:</strong> $${c.checkAmount.toFixed(2)}</p><table><tr><th>Invoice</th><th>Description</th><th>Amount</th><th>Discount</th><th>Net</th></tr>`;
+      for (const l of c.lines) { html += `<tr><td>${l.invoiceReference||''}</td><td>${l.invoiceDescription||''}</td><td>${l.amount.toFixed(2)}</td><td>${l.discount.toFixed(2)}</td><td>${l.netAmount.toFixed(2)}</td></tr>`; }
+      html += '</table></div>';
+    }
+    html += '</body></html>';
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to load print data');
+  }
+};
+const printAchStubs = () => {
+  window.open(`/api/ap-check-runs/${checkRunId.value}/ach-export`, '_blank');
+};
+
+const removeCheck = async (check) => {
+  if (!window.confirm(`Remove check ${check.checkReference}?`)) return;
+  try {
+    await api.post(`ap-check-runs/${checkRunId.value}/remove-check/${check.apCheckId}`);
+    await fetchData();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to remove check');
+  }
+};
+
+const updatePaymentMethod = async (check, method) => {
+  try {
+    await api.put(`ap-checks/${check.apCheckId}/payment-method`, { paymentMethod: method });
+    check.paymentMethod = method;
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to update payment method');
+  }
 };
 
 const isReversed = (check) => check.isReversedIndependently;
@@ -307,7 +398,7 @@ const formatCurrency = (value) => {
 };
 
 // --- Initial Load ---
-fetchData();
+onMounted(fetchData);
 
 </script>
 

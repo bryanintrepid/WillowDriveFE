@@ -32,6 +32,6 @@ import Footer from '../components/Footer.vue';
 }
 
 .page-content {
-    padding: 0 calc(1.5rem / 2) 60px calc(1.5rem / 2);
+    padding: 1.25rem calc(1.5rem / 2) 60px calc(1.5rem / 2);
 }
 </style>

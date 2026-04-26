@@ -108,28 +108,55 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch, onMounted } from 'vue';
 import Datepicker from 'vue-datepicker-next';
 import 'vue-datepicker-next/index.css';
 import ClearableSearchInput from '@/components/ClearableSearchInput.vue';
 import Paginate from '@/components/Paginate.vue';
-import { formatCurrency } from '@/utils/format.js';
+import api from '../../services/api';
+
+const formatCurrency = (value) => {
+  const num = typeof value === 'number' ? value : parseFloat(value || 0);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(isNaN(num) ? 0 : num);
+};
 
 // --- Refs and Reactive State ---
 const startDate = ref(new Date());
-const endDate = ref(new Date());
+const endDate = ref(new Date(new Date().setMonth(new Date().getMonth() + 1)));
 const paymentDate = ref(new Date());
 const searchQuery = ref('');
 
 const pagination = reactive({
   currentPage: 1,
   totalPages: 1,
-  results: [
-    { invoiceId: 1, vendorName: 'Vendor A', invoiceNumber: 'INV-001', dueDate: '2023-10-01', invoiceAmount: 100.00, validAmount: 5.00, netAmount: 95.00, lostAmount: 0, selected: false },
-    { invoiceId: 2, vendorName: 'Vendor B', invoiceNumber: 'INV-002', dueDate: '2023-10-05', invoiceAmount: 250.50, validAmount: 10.00, netAmount: 240.50, lostAmount: 0, selected: false },
-    { invoiceId: 3, vendorName: 'Vendor C', invoiceNumber: 'INV-003', dueDate: '2023-10-10', invoiceAmount: 75.25, validAmount: 0, netAmount: 75.25, lostAmount: 0, selected: false },
-  ]
+  results: []
 });
+
+const fetchData = async () => {
+  try {
+    const params = {};
+    if (startDate.value) params.startDate = new Date(startDate.value).toISOString().split('T')[0];
+    if (endDate.value) params.endDate = new Date(endDate.value).toISOString().split('T')[0];
+    if (searchQuery.value) params.searchText = searchQuery.value;
+    const response = await api.get('cash-planning', { params });
+    pagination.results = (response.data || []).map(item => ({
+      invoiceId: item.vendorInvoiceId,
+      vendorName: item.vendorName,
+      invoiceNumber: item.invoiceNumber,
+      dueDate: item.dueDate ? new Date(item.dueDate).toLocaleDateString() : '',
+      invoiceAmount: item.invoiceAmount,
+      validAmount: item.discountAmount,
+      netAmount: item.netAmount,
+      lostAmount: item.lostAmount,
+      selected: false,
+    }));
+  } catch (err) {
+    console.error('Failed to fetch cash planning data:', err);
+  }
+};
+
+watch([startDate, endDate, searchQuery], fetchData, { deep: true });
+onMounted(fetchData);
 
 // --- Computed Properties ---
 const anySelected = computed(() => pagination.results.some(i => i.selected));
@@ -158,7 +185,6 @@ const toggleSelectAll = (event) => {
 
 const handlePageChange = (page) => {
   pagination.currentPage = page;
-  // Here you would fetch data for the new page
 };
 </script>
 

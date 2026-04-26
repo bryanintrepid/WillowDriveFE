@@ -26,14 +26,25 @@ api.interceptors.response.use(
   (error) => {
     // Handle errors globally
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      console.error('Response error:', error.response.status, error.response.data);
+      const status = error.response.status;
+      const url = (error.config && error.config.url) ? String(error.config.url) : '';
+      // 401 from anything other than the login call itself = expired/invalid token.
+      // Clear stale auth and bounce to /login with redirect back to the current path.
+      const isLoginRequest = /(^|\/)login(\?|$)/i.test(url);
+      if (status === 401 && !isLoginRequest && typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        } catch (e) { /* ignore storage errors */ }
+        if (window.location.pathname !== '/login') {
+          const redirect = window.location.pathname + window.location.search;
+          window.location.assign('/login?redirect=' + encodeURIComponent(redirect));
+        }
+      }
+      console.error('Response error:', status, error.response.data);
     } else if (error.request) {
-      // The request was made but no response was received
       console.error('Request error:', error.request);
     } else {
-      // Something happened in setting up the request that triggered an Error
       console.error('Error:', error.message);
     }
     return Promise.reject(error);

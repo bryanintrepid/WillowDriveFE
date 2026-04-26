@@ -15,7 +15,22 @@
             <small v-else>&nbsp;(Posted on {{ formatDate(check.batchInfo.transactionDate) }})</small>
           </h1>
         </div>
-        <div class="dashhead-toolbar">
+        <div class="dashhead-toolbar d-flex gap-2">
+          <span v-if="bankStatus.bankCleared && !bankStatus.amountMismatch" class="badge bg-success-subtle text-success fs-13 d-flex align-items-center gap-1">
+            <i class="ri-checkbox-circle-fill"></i> Cleared by bank on {{ formatDate(bankStatus.bankClearedDate) }}
+          </span>
+          <span v-else-if="bankStatus.amountMismatch" class="badge bg-warning-subtle text-warning fs-13 d-flex align-items-center gap-1">
+            <i class="ri-error-warning-fill"></i> Amount mismatch — Bank: {{ formatCurrency(bankStatus.bankTransactionAmount) }}
+          </span>
+          <span v-else-if="check.apCheckId > 0" class="badge bg-light text-muted fs-13 d-flex align-items-center gap-1">
+            <i class="ri-time-line"></i> Not yet cleared by bank
+          </span>
+          <button v-if="bankStatus.bankCleared && bankStatus.keyBankTransactionId" class="btn btn-sm btn-outline-warning" @click="unmatchTransaction">
+            <i class="ri-link-unlink"></i> Unmatch
+          </button>
+          <button v-else-if="check.apCheckId > 0 && !bankStatus.bankCleared" class="btn btn-sm btn-outline-primary" @click="showMatchModal = true">
+            <i class="ri-link"></i> Match to Bank Transaction
+          </button>
           <button class="btn btn-light">
             <i :class="isDirty ? 'ri-error-warning-line text-warning' : 'ri-check-line text-success'"></i>
             {{ isDirty ? 'Unsaved changes' : 'Saved' }}
@@ -143,6 +158,21 @@
         </div>
       </div>
 
+      <!-- Attachments -->
+      <div class="row mt-3" v-if="check.apCheckId">
+        <div class="col-lg-12">
+          <div class="card">
+            <div class="card-header"><h5 class="card-title mb-0">Documents</h5></div>
+            <div class="card-body">
+              <AttachmentPanel
+                entityType="ApCheck"
+                :entityId="check.apCheckId"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="row mt-3">
         <div class="col-lg-12">
             <div class="card">
@@ -164,18 +194,65 @@
         </div>
       </div>
     </form>
+
+    <!-- Match to Bank Transaction Modal -->
+    <div v-if="showMatchModal" class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Match to Bank Transaction</h5>
+            <button type="button" class="btn-close" @click="showMatchModal = false"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-muted mb-3">Select an unmatched bank debit transaction to link to check {{ check.checkReference }} ({{ formatCurrency(check.checkAmount) }})</p>
+            <div v-if="!unmatchedTransactions.length" class="text-center py-3">
+              <p class="text-muted">No unmatched debit transactions found near this amount</p>
+            </div>
+            <table v-else class="table table-sm table-hover">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="text-end">Amount</th>
+                  <th>Description</th>
+                  <th>Check #</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="txn in unmatchedTransactions" :key="txn.keyBankTransactionId">
+                  <td>{{ formatDate(txn.transactionEffectiveDate) }}</td>
+                  <td class="text-end" :class="{ 'text-warning': txn.transactionAmount !== check.checkAmount }">
+                    {{ formatCurrency(txn.transactionAmount) }}
+                  </td>
+                  <td>{{ txn.transactionDescription }}</td>
+                  <td>{{ txn.checkSerialNumber || '—' }}</td>
+                  <td>
+                    <button class="btn btn-sm btn-primary" @click="matchTransaction(txn.keyBankTransactionId)">
+                      <i class="ri-link"></i> Match
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import api from '../../services/api';
+import AttachmentPanel from '../../components/AttachmentPanel.vue';
 
 const route = useRoute();
+const router = useRouter();
 
 // --- State ---
 const check = reactive({
-  apCheckId: route.params.checkId || 0,
+  apCheckId: parseInt(route.params.checkId) || 0,
   fiscalYear: new Date().getFullYear(),
   checkReference: '',
   payDate: new Date().toISOString().split('T')[0],
@@ -183,28 +260,31 @@ const check = reactive({
   printCheck: true,
   checkAmount: 0,
   miscellaneous: route.params.misc === 'true',
-  glBankCheckingAccount: { accountNumber: '10100' },
-  vendor: { vendorId: route.params.vendorId || 0, name: 'Sample Vendor' },
-  payee: 'Sample Payee',
+  glBankCheckingAccount: { accountNumber: '' },
+  vendor: { vendorId: parseInt(route.params.vendorId) || 0, name: '' },
+  payee: '',
   attention: '',
-  street: '123 Main St',
-  city: 'Anytown',
-  state: 'CA',
-  zip: '12345',
+  street: '',
+  city: '',
+  state: '',
+  zip: '',
   batchInfo: {
     posted: false,
     transactionDate: null,
   },
-  checkDetailLines: [
-    {
-      invoiceReference: 'INV-001',
-      invoiceDescription: 'Initial Item',
-      amount: 100.00,
-      discount: 0,
-      glAccount: { accountNumber: '60100' },
-    },
-  ],
+  checkDetailLines: [],
 });
+
+const bankStatus = reactive({
+  bankCleared: false,
+  bankClearedDate: null,
+  bankTransactionAmount: null,
+  amountMismatch: false,
+  keyBankTransactionId: null,
+});
+
+const showMatchModal = ref(false);
+const unmatchedTransactions = ref([]);
 
 const originalCheckState = ref(JSON.stringify(check));
 
@@ -219,6 +299,10 @@ const checkAmount = computed(() => {
 
 watch(checkAmount, (newVal) => {
     check.checkAmount = newVal;
+});
+
+watch(showMatchModal, (val) => {
+    if (val) loadUnmatchedTransactions();
 });
 
 // --- Methods ---
@@ -247,29 +331,174 @@ const removeLine = (index) => {
   check.checkDetailLines.splice(index, 1);
 };
 
-const saveApCheck = (checkToSave) => {
-  console.log('Saving check:', checkToSave);
-  // Pretend save is successful
-  originalCheckState.value = JSON.stringify(checkToSave);
-  alert('Check saved!');
+const saveApCheck = async () => {
+  try {
+    const payload = {
+      apCheckId: check.apCheckId,
+      companyId: 1,
+      vendorId: check.vendor.vendorId,
+      checkReference: check.checkReference,
+      checkNumber: check.checkNumber,
+      payDate: check.payDate,
+      glBankCheckingAccountNumber: check.glBankCheckingAccount.accountNumber,
+      miscellaneous: check.miscellaneous,
+      payee: check.payee,
+      attention: check.attention,
+      street: check.street,
+      city: check.city,
+      state: check.state,
+      zip: check.zip,
+      printCheck: check.printCheck,
+      paymentMethod: check.paymentMethod || 'Check',
+      checkRunId: check.checkRunId,
+      checkDetailLines: check.checkDetailLines.map(l => ({
+        invoiceReference: l.invoiceReference,
+        invoiceDescription: l.invoiceDescription,
+        amount: l.amount || 0,
+        discount: l.discount || 0,
+        netAmount: (l.amount || 0) - (l.discount || 0),
+        glAccountNumber: l.glAccount?.accountNumber || l.glAccountNumber,
+        invoiceId: l.invoiceId,
+      })),
+    };
+    const response = await api.post('ap-checks/save', payload);
+    applyCheckData(response.data);
+    originalCheckState.value = JSON.stringify(check);
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to save check');
+  }
 };
 
-const postApCheck = (checkToPost) => {
-  console.log('Posting check:', checkToPost);
-  alert('Check posted!');
+const postApCheck = async () => {
+  if (!check.apCheckId || check.apCheckId <= 0) { alert('Save the check first.'); return; }
+  if (!window.confirm('Post this check? This will create a GL batch.')) return;
+  try {
+    const result = await api.post('ap-checks/post', {
+      apCheckIds: [check.apCheckId],
+      companyId: 1,
+      fiscalYear: check.fiscalYear || new Date().getFullYear(),
+      reverse: false,
+    });
+    alert(`Check posted. Batch: ${result.data.batch}`);
+    const response = await api.get(`ap-checks/${check.apCheckId}`);
+    applyCheckData(response.data);
+    originalCheckState.value = JSON.stringify(check);
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to post check');
+  }
 };
 
-const reverseApCheck = (checkToReverse) => {
-  console.log('Reversing check:', checkToReverse);
-  alert('Check reversed!');
+const reverseApCheck = async () => {
+  if (!check.apCheckId || check.apCheckId <= 0) return;
+  if (!window.confirm('Reverse this check? This will create a reversing GL batch.')) return;
+  try {
+    const result = await api.post('ap-checks/reverse', {
+      apCheckIds: [check.apCheckId],
+      companyId: 1,
+      fiscalYear: check.fiscalYear || new Date().getFullYear(),
+      reverse: true,
+    });
+    alert(`Check reversed. Batch: ${result.data.batch}`);
+    const response = await api.get(`ap-checks/${check.apCheckId}`);
+    applyCheckData(response.data);
+    originalCheckState.value = JSON.stringify(check);
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Failed to reverse check');
+  }
+};
+
+const applyCheckData = (data) => {
+  check.apCheckId = data.apCheckId;
+  check.checkReference = data.checkReference;
+  check.fiscalYear = data.fiscalYear || check.fiscalYear;
+  check.payDate = data.payDate ? new Date(data.payDate).toISOString().split('T')[0] : '';
+  check.checkNumber = data.checkNumber;
+  check.printCheck = data.printCheck;
+  check.checkAmount = data.checkAmount;
+  check.miscellaneous = data.miscellaneous;
+  check.glBankCheckingAccount = { accountNumber: data.glBankCheckingAccountNumber || '' };
+  check.vendor = { vendorId: data.vendorId || 0, name: data.vendorName || '' };
+  check.payee = data.payee;
+  check.attention = data.attention;
+  check.street = data.street;
+  check.city = data.city;
+  check.state = data.state;
+  check.zip = data.zip;
+  check.batchInfo = { posted: data.posted, transactionDate: data.postingDate };
+  check.checkRunId = data.checkRunId;
+  check.checkDetailLines = (data.checkDetailLines || []).map(d => ({
+    invoiceReference: d.invoiceReference,
+    invoiceDescription: d.invoiceDescription,
+    amount: d.amount,
+    discount: d.discount,
+    glAccount: { accountNumber: d.glAccountNumber },
+    invoiceId: d.invoiceId,
+  }));
+};
+
+const fetchBankStatus = async () => {
+  if (!check.apCheckId || check.apCheckId <= 0) return;
+  try {
+    const response = await api.get(`bank-reconciliation/check-status/${check.apCheckId}`);
+    const data = response.data;
+    bankStatus.bankCleared = data.bankCleared;
+    bankStatus.bankClearedDate = data.bankClearedDate;
+    bankStatus.bankTransactionAmount = data.bankTransactionAmount;
+    bankStatus.amountMismatch = data.amountMismatch;
+    bankStatus.keyBankTransactionId = data.keyBankTransactionId;
+  } catch (err) {
+    // Ignore — bank status is supplementary
+  }
+};
+
+const loadUnmatchedTransactions = async () => {
+  try {
+    const response = await api.get('bank-reconciliation/unmatched-transactions', {
+      params: { nearAmount: check.checkAmount }
+    });
+    unmatchedTransactions.value = response.data || [];
+  } catch (err) {
+    console.error('Failed to load unmatched transactions:', err);
+  }
+};
+
+const matchTransaction = async (keyBankTransactionId) => {
+  try {
+    await api.post('bank-reconciliation/match', {
+      keyBankTransactionId,
+      apCheckId: check.apCheckId
+    });
+    showMatchModal.value = false;
+    await fetchBankStatus();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Match failed');
+  }
+};
+
+const unmatchTransaction = async () => {
+  if (!bankStatus.keyBankTransactionId) return;
+  if (!window.confirm('Remove bank transaction match?')) return;
+  try {
+    await api.post(`bank-reconciliation/unmatch/${bankStatus.keyBankTransactionId}`);
+    await fetchBankStatus();
+  } catch (err) {
+    alert(err.response?.data || err.message || 'Unmatch failed');
+  }
 };
 
 // --- Initial Load ---
-if (check.apCheckId && check.apCheckId !== '0') {
-  console.log(`Fetching data for check ID: ${check.apCheckId}`);
-  // API call to fetch check data would go here
-  // For now, we use the default reactive object
-}
+onMounted(async () => {
+  if (check.apCheckId && check.apCheckId > 0) {
+    try {
+      const response = await api.get(`ap-checks/${check.apCheckId}`);
+      applyCheckData(response.data);
+      originalCheckState.value = JSON.stringify(check);
+      await fetchBankStatus();
+    } catch (err) {
+      console.error('Failed to load check:', err);
+    }
+  }
+});
 
 </script>
 
