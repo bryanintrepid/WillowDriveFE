@@ -19,6 +19,7 @@ const router = createRouter({
     },
     {
       path: '/time/clock-in',
+      alias: '/kiosk',
       name: 'time-clock-in',
       component: () => import('../views/time/clock-in.vue'),
       meta: { layout: 'kiosk' },
@@ -52,6 +53,12 @@ const router = createRouter({
       path: '/payroll/admin/tax-tables',
       name: 'payroll-admin-tax-tables',
       component: () => import('../views/payroll/admin/TaxTables.vue'),
+    },
+    {
+      path: '/payroll/pay-runs/:payrollRunId',
+      name: 'payroll-pay-run-detail',
+      component: () => import('../views/payroll/PayRunDetail.vue'),
+      props: true,
     },
     {
       path: '/employees',
@@ -479,6 +486,8 @@ const router = createRouter({
   ],
 })
 
+import { isKioskUser } from '../utils/auth'
+
 // Global auth guard: protect all routes except the public allowlist
 const publicRoutes = new Set(['/login'])
 router.beforeEach((to, from, next) => {
@@ -491,8 +500,7 @@ router.beforeEach((to, from, next) => {
   } catch (e) {
     user = null
   }
-  const uname = (user?.name || user?.fullName || user?.username || '').toString().trim()
-  const isKiosk = uname.toLowerCase() === 'kiosk'
+  const isKiosk = isKioskUser(user)
 
   // If navigating to a public route
   if (publicRoutes.has(to.path)) {
@@ -507,9 +515,9 @@ router.beforeEach((to, from, next) => {
   if (!token) {
     return next({ path: '/login', query: { redirect: to.fullPath } })
   }
-  // If logged in as Kiosk user, restrict to the clock-in route only
-  if (isKiosk && to.path !== '/time/clock-in') {
-    return next({ path: '/time/clock-in' })
+  // If logged in as a kiosk-terminal user (Kiosk role only), restrict to the clock-in route
+  if (isKiosk && to.path !== '/time/clock-in' && to.path !== '/kiosk') {
+    return next({ path: '/kiosk' })
   }
   return next()
 })

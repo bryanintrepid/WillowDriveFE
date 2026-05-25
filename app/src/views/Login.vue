@@ -59,6 +59,7 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMainStore } from '@/stores/mainStore' // Adjust the path as needed
 import api from '@/services/api' // Adjust the path to your Axios instance
+import { isKioskUser } from '@/utils/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -90,9 +91,7 @@ const signin = async () => {
     successMessage.value = 'Login successful!'
     // If redirected from a protected route, go back there first
     const redirectTo = route.query.redirect
-    const uname = (user?.name || user?.fullName || user?.username || '').toString().trim().toLowerCase()
-    const isKiosk = uname === 'kiosk'
-    if (isKiosk) {
+    if (isKioskUser(user)) {
       router.push('/time/clock-in')
       return
     }

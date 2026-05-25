@@ -146,7 +146,7 @@ const props = defineProps({
   entityType: {
     type: String,
     required: true,
-    validator: (value) => ['GlTransaction', 'VendorInvoice', 'ApCheck', 'CashReceipt', 'Vendor', 'ExpenseReportLine', 'TaxRateEvidence'].includes(value)
+    validator: (value) => ['GlTransaction', 'VendorInvoice', 'ApCheck', 'CashReceipt', 'Vendor', 'ExpenseReportLine', 'TaxRateEvidence', 'EmployeeExemption'].includes(value)
   },
   entityId: {
     type: [Number, String],

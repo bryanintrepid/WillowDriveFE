@@ -73,12 +73,13 @@
           <table class="table table-nowrap align-middle">
             <thead>
               <tr>
-                <th style="width: 10%">Code</th>
-                <th style="width: 25%">Description</th>
-                <th style="width: 15%">Short Desc</th>
+                <th style="width: 8%">Code</th>
+                <th style="width: 22%">Description</th>
+                <th style="width: 13%">Type</th>
+                <th class="text-end" style="width: 6%">Ord</th>
                 <th style="width: 10%">Method</th>
-                <th class="text-end" style="width: 10%">Rate</th>
-                <th class="text-end" style="width: 10%">Match %</th>
+                <th class="text-end" style="width: 8%">Rate</th>
+                <th class="text-end" style="width: 8%">Match %</th>
                 <th class="text-end" style="width: 10%">Max W/H</th>
                 <th style="width: 5%; text-align: center;">401k</th>
                 <th style="width: 5%; text-align: center;">Actions</th>
@@ -90,7 +91,12 @@
                   <a href="#" @click.prevent="selectDeduction(ded)">{{ ded.deductionCode }}</a>
                 </td>
                 <td>{{ ded.description }}</td>
-                <td>{{ ded.shortDescription }}</td>
+                <td>
+                  <span class="badge" :class="typeBadgeClass(ded.deductionType)">
+                    {{ typeLabel(ded.deductionType) }}
+                  </span>
+                </td>
+                <td class="text-end text-muted">{{ ded.ordinal ?? '—' }}</td>
                 <td>{{ methodLabel(ded.method) }}</td>
                 <td class="text-end">{{ ded.rate }}</td>
                 <td class="text-end">{{ ded.employerMatchPercent }}</td>
@@ -132,8 +138,20 @@
                 <input type="text" class="form-control" v-model="selectedDeduction.shortDescription" />
               </div>
               <div class="col-4">
+                <label class="form-label">Type</label>
+                <select class="form-select" v-model.number="selectedDeduction.deductionType">
+                  <option v-for="(label, idx) in TYPE_LABELS" :key="idx" :value="idx">{{ label }}</option>
+                </select>
+                <small class="text-muted">Drives Phase 4 calc routing.</small>
+              </div>
+              <div class="col-4">
+                <label class="form-label">Application Order</label>
+                <input type="number" class="form-control" v-model.number="selectedDeduction.ordinal"
+                  placeholder="lower applies first" />
+              </div>
+              <div class="col-4">
                 <label class="form-label">Method</label>
-                <select class="form-select" v-model="selectedDeduction.method">
+                <select class="form-select" v-model.number="selectedDeduction.method">
                   <option :value="0">Fixed</option>
                   <option :value="1">Percent</option>
                   <option :value="2">Calculated</option>
@@ -141,11 +159,11 @@
               </div>
               <div class="col-4">
                 <label class="form-label">Rate</label>
-                <input type="number" step="0.001" class="form-control" v-model="selectedDeduction.rate" />
+                <input type="number" step="0.001" class="form-control" v-model.number="selectedDeduction.rate" />
               </div>
               <div class="col-4">
                 <label class="form-label">Max Withholding</label>
-                <input type="number" step="0.01" class="form-control" v-model="selectedDeduction.maximumWithholding" />
+                <input type="number" step="0.01" class="form-control" v-model.number="selectedDeduction.maximumWithholding" />
               </div>
               <div class="col-4">
                 <label class="form-label">Employer Match %</label>
@@ -208,10 +226,28 @@ const newDed = reactive({
   shortDescription: '',
   method: 0,
   rate: 0,
+  deductionType: 7,
+  ordinal: null,
   isNew: true,
 })
 
 const methodLabel = (m) => ['Fixed', 'Percent', 'Calculated'][m] || 'Unknown'
+
+const TYPE_LABELS = ['Pretax 401k', 'Roth 401k', 'HSA Pretax', 'Medical', 'Dental/Vision', 'Garnishment', 'Loan', 'Other']
+const typeLabel = (t) => (t == null ? '—' : (TYPE_LABELS[t] || `Type ${t}`))
+const typeBadgeClass = (t) => {
+  const map = {
+    0: 'bg-info-subtle text-info',
+    1: 'bg-info-subtle text-info',
+    2: 'bg-success-subtle text-success',
+    3: 'bg-success-subtle text-success',
+    4: 'bg-success-subtle text-success',
+    5: 'bg-danger-subtle text-danger',
+    6: 'bg-warning-subtle text-warning',
+    7: 'bg-secondary-subtle text-secondary'
+  }
+  return map[t] || 'bg-secondary-subtle text-secondary'
+}
 
 const formatCurrency = (value) => {
   if (value == null) return ''

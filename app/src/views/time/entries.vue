@@ -15,11 +15,11 @@
           </option>
         </select>
       </div>
-      <div class="col-2 ">
+      <div class="col-2">
         <label class="form-label">Start Date</label>
         <input type="text" class="form-control" v-model="start" @change="onDateChange" placeholder="MM/DD/YYYY" />
       </div>
-      <div class="col-2 ">
+      <div class="col-2">
         <label class="form-label">End Date</label>
         <input type="text" class="form-control" v-model="end" @change="onDateChange" placeholder="MM/DD/YYYY" />
       </div>
@@ -28,7 +28,7 @@
         <select class="form-select" v-model="selectedBoss">
           <option :value="null">All Bosses</option>
           <option v-for="boss in crewBosses" :key="boss.id" :value="boss">
-            {{ boss.name }} 
+            {{ boss.name }}
           </option>
         </select>
       </div>
@@ -51,13 +51,13 @@
 
     <!-- Table -->
     <div class="table-responsive">
-        <table class="table table-striped table-bordered align-middle">
+        <table class="table table-bordered align-middle">
     <thead>
       <tr>
         <th>Name</th>
         <th>Time In</th>
         <th>Time Out</th>
-        <th>Subtotal</th>
+        <th>Adjusted</th>
         <th>Total</th>
         <th>Type</th>
         <th>Product</th>
@@ -69,19 +69,21 @@
     <tbody>
       <template v-for="group in filteredEntries" :key="group.dateReference">
         <tr class="table-group-header bg-light fw-bold">
-          <td colspan="11">{{ group.dateReference }}</td>
+          <td colspan="10">{{ group.dateReference }}</td>
         </tr>
-        <template v-for="entry in group.clockEntries" :key="group.dateReference + '-' + entry.clockEntryId">
+        <template v-for="(entry, idx) in group.clockEntries" :key="group.dateReference + '-' + entry.employeeId + '-' + entry.clockEntryId">
           <!-- Editing Row -->
-          <tr v-if="editingEntry === entry">
+          <tr v-if="editingEntry === entry" :class="{ 'row-alt': idx % 2 === 1 }">
             <td>
               <input v-model="editForm.employeeName" class="form-control form-control-sm" />
             </td>
             <td>
-              <input v-model="editForm.timeIn" class="form-control form-control-sm" :disabled="editForm.type == 3 || editForm.type == 4 || editForm.type == 5" />
+              <input type="date" v-model="editForm.timeInDate" class="form-control form-control-sm mb-1" :disabled="editForm.type == 3 || editForm.type == 4 || editForm.type == 5" />
+              <input v-model="editForm.timeIn" class="form-control form-control-sm" placeholder="HH:MM" :disabled="editForm.type == 3 || editForm.type == 4 || editForm.type == 5" />
             </td>
             <td>
-              <input v-model="editForm.timeOut" class="form-control form-control-sm" :disabled="editForm.type == 3 || editForm.type == 4 || editForm.type == 5" />
+              <input type="date" v-model="editForm.timeOutDate" class="form-control form-control-sm mb-1" :disabled="editForm.type == 3 || editForm.type == 4 || editForm.type == 5" />
+              <input v-model="editForm.timeOut" class="form-control form-control-sm" placeholder="HH:MM" :disabled="editForm.type == 3 || editForm.type == 4 || editForm.type == 5" />
             </td>
             <td>
               <span v-if="editForm.type == 1 || editForm.type == 2">
@@ -100,17 +102,23 @@
             </td>
             <td>
               <select v-model="editForm.productId" class="form-select form-select-sm">
-                <option v-for="prod in products" :key="prod.id" :value="prod.id">{{ prod.name }}</option>
+                <option v-for="opt in productOptions" :key="opt.id" :value="opt.id" :disabled="opt._orphan">
+                  {{ formatOptLabel(opt) }}
+                </option>
               </select>
             </td>
             <td>
               <select v-model="editForm.productYearId" class="form-select form-select-sm">
-                <option v-for="year in productYears" :key="year.id" :value="year.id">{{ year.name }}</option>
+                <option v-for="opt in productYearOptions" :key="opt.id" :value="opt.id" :disabled="opt._orphan">
+                  {{ formatOptLabel(opt) }}
+                </option>
               </select>
             </td>
             <td>
               <select v-model="editForm.activityId" class="form-select form-select-sm">
-                <option v-for="act in activities" :key="act.id" :value="act.id">{{ act.name }}</option>
+                <option v-for="opt in activityOptions" :key="opt.id" :value="opt.id" :disabled="opt._orphan">
+                  {{ formatOptLabel(opt) }}
+                </option>
               </select>
             </td>
             <td>
@@ -123,13 +131,19 @@
             </td>
           </tr>
           <!-- Display Row -->
-          <tr v-else>
+          <tr v-else :class="{ 'row-alt': idx % 2 === 1 }">
             <td>{{ entry.employeeName }} ({{ entry.employeeNumber }})</td>
-            <td>{{ formatTimeDisplay(entry.timeInTime) }}</td>
-            <td>{{ formatTimeDisplay(entry.timeOutTime) }}</td>
+            <td>
+              <div class="text-muted small" :class="{ 'text-warning fw-semibold': dateDiffersFromGroup(entry.timeInDate, group.dateReference) }">{{ formatDateDisplay(entry.timeInDate) }}</div>
+              <div>{{ formatTimeDisplay(entry.timeInTime) }}</div>
+            </td>
+            <td>
+              <div class="text-muted small" :class="{ 'text-warning fw-semibold': dateDiffersFromGroup(entry.timeOutDate, group.dateReference) }">{{ formatDateDisplay(entry.timeOutDate) }}</div>
+              <div>{{ formatTimeDisplay(entry.timeOutTime) }}</div>
+            </td>
             <td>{{ entry.adjusted }}</td>
             <td>{{ entry.total }}</td>
-            <td>{{ entry.typeName || (typeOptions.find(opt => opt.id === entry.type)?.name || entry.type) }}</td>
+            <td>{{ formatTypeDisplay(entry) }}</td>
             <td>{{ entry.productName }}</td>
             <td>{{ entry.productYearName }}</td>
             <td>{{ entry.activityName }}</td>
@@ -167,8 +181,6 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import api from '@/services/api'
-
-const form = ref({ date: '', employeeName: '', hours: '', notes: '', id: null })
 
 const entries = ref([])
 
@@ -213,39 +225,58 @@ watch(() => editForm.value.type, (newType) => {
   }
 })
 
-// Watch for time changes to calculate total
-watch([() => editForm.value.timeIn, () => editForm.value.timeOut], ([newTimeIn, newTimeOut]) => {
-  if (editForm.value.type && ![3, 4, 5].includes(editForm.value.type)) {
-    if (newTimeIn && newTimeOut) {
-      try {
-        const start = new Date(`1970-01-01T${newTimeIn}`)
-        const end = new Date(`1970-01-01T${newTimeOut}`)
-        if (end > start) {
-          const diff = (end - start) / 1000 / 60 / 60 // difference in hours
-          editForm.value.total = parseFloat(diff.toFixed(2))
-        } else {
+// Watch for time changes to calculate total. Uses the full date+time so multi-day spans compute correctly.
+watch(
+  [
+    () => editForm.value.timeIn,
+    () => editForm.value.timeOut,
+    () => editForm.value.timeInDate,
+    () => editForm.value.timeOutDate,
+  ],
+  ([newTimeIn, newTimeOut, newTimeInDate, newTimeOutDate]) => {
+    if (editForm.value.type && ![3, 4, 5].includes(editForm.value.type)) {
+      if (newTimeIn && newTimeOut && newTimeInDate && newTimeOutDate) {
+        try {
+          const start = new Date(`${newTimeInDate}T${newTimeIn}`)
+          const end = new Date(`${newTimeOutDate}T${newTimeOut}`)
+          if (end > start) {
+            const diff = (end - start) / 1000 / 60 / 60 // difference in hours
+            editForm.value.total = parseFloat(diff.toFixed(2))
+          } else {
+            editForm.value.total = 0
+          }
+        } catch (e) {
           editForm.value.total = 0
         }
-      } catch (e) {
-        editForm.value.total = 0
       }
     }
   }
-})
+)
 
 const startInlineEdit = (entry) => {
   // Use a deep copy to completely decouple the form from the original data
   originalEditForm.value = JSON.parse(JSON.stringify(entry));
   const form = JSON.parse(JSON.stringify(entry));
 
-  // For existing entries, extract just the time part for the input fields.
+  // Split TimeIn / TimeOut into date + time so the user can edit each independently.
+  // Falls back to the row's dateReference (or DateRef) so newly-added entries get a default date.
+  const fallbackDate = entry.timeInDate || entry.dateReference || entry.dateRef || '';
+  form.timeInDate = toIsoDate(entry.timeInDate || fallbackDate);
+  form.timeOutDate = toIsoDate(entry.timeOutDate || fallbackDate);
+
+  // Backend ClockEntry uses `productYear` (the id) but the v-model in the template
+  // is `editForm.productYearId`. Alias so the dropdown displays the row's current year.
+  if (form.productYearId == null && form.productYear != null) {
+    form.productYearId = form.productYear;
+  }
+
   if (form.timeIn) {
     form.timeIn = new Date(form.timeIn).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
   if (form.timeOut) {
     form.timeOut = new Date(form.timeOut).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   }
-  
+
   editForm.value = form;
   editingEntry.value = entry;
 };
@@ -359,8 +390,14 @@ const saveInlineEdit = async (form, dateRef, options = { refresh: true }) => {
         error.value = "Please enter a valid time in";
         throw new Error("Invalid time in");
       }
-      payload.timeIn = `${dateRef} ${timeIn}`;
-      payload.timeOut = timeOut ? `${dateRef} ${timeOut}` : null;
+      // Use the per-field dates so multi-day spans persist correctly.
+      // Falls back to dateRef if a date wasn't captured (defensive).
+      const inDateUs = toUsDate(payload.timeInDate) || dateRef;
+      const outDateUs = toUsDate(payload.timeOutDate) || inDateUs;
+      payload.timeIn = `${inDateUs} ${timeIn}`;
+      payload.timeOut = timeOut ? `${outDateUs} ${timeOut}` : null;
+      // Backend EntryValidate enforces TimeOut > TimeIn; we don't pre-check here so
+      // edge-case rows (e.g. zero-duration kiosk artifacts) can still be opened+resaved.
     } else {
       payload.timeIn = null;
       payload.timeOut = null;
@@ -370,15 +407,18 @@ const saveInlineEdit = async (form, dateRef, options = { refresh: true }) => {
       throw new Error(error.value);
     }
 
-    // 2. Prepare payload with correct data types, matching legacy `updateEntry`
+    // 2. Prepare payload with correct data types, matching the backend TimeEntry model.
+    // NOTE: the C# property is `EntryId` (serializes as `entryId`). Sending `clockEntryId`
+    // silently fails to bind -- UpdateEntry then runs `WHERE ClockEntryId = NULL`, 0 rows
+    // affected, returns Success=true with no actual change persisted.
     payload = {
-      "clockEntryId": payload.clockEntryId,
+      "entryId": payload.clockEntryId,
       "employeeId": parseInt(payload.employeeId),
       "timeIn": payload.timeIn,
       "timeOut": payload.timeOut,
       "type": parseInt(payload.type),
       "productId": payload.productId ? payload.productId.toString() : "0",
-      "productYearId": payload.productYear ? payload.productYear.toString() : "0",
+      "productYearId": payload.productYearId ? payload.productYearId.toString() : (payload.productYear ? payload.productYear.toString() : "0"),
       "activityId": payload.activityId ? payload.activityId.toString() : "0",
       "note": payload.note || "",
       "dateRef": dateRef,
@@ -386,8 +426,9 @@ const saveInlineEdit = async (form, dateRef, options = { refresh: true }) => {
       "adjusted": parseFloat(payload.adjusted || 0)
     };
 
-    // 3. Determine endpoint (add or update)
-    const isNewEntry = !payload.clockEntryId || payload.clockEntryId === 0;
+    // 3. Determine endpoint (add or update). payload was reassigned above so the only
+    // id-bearing field is now `entryId` (renamed from clockEntryId to match the C# model).
+    const isNewEntry = !payload.entryId || payload.entryId === 0;
     const endpoint = isNewEntry ? 'addentry' : 'updateentry';
 
     const response = await api.post(endpoint, payload);
@@ -411,6 +452,15 @@ const saveInlineEdit = async (form, dateRef, options = { refresh: true }) => {
     throw err;
   }
 };
+
+// Render the Type column. Placeholder rows (employees with no entry that day) come
+// back from the backend with entry.type = 0 / typeName = null; show nothing for those.
+function formatTypeDisplay(entry) {
+  if (entry?.typeName) return entry.typeName
+  if (!entry || !entry.type) return ''
+  const opt = typeOptions.find((o) => o.id === entry.type)
+  return opt ? opt.name : ''
+}
 
 function formatTimeDisplay(timeString) {
   if (!timeString) return '';
@@ -438,25 +488,6 @@ function formatTimeDisplay(timeString) {
   return `${hours12}:${minutesStr.padStart(2, '0')} ${period}`;
 }
 
-const deleteEntry = async (entry) => {
-  if (window.confirm(`Are you sure you want to delete this entry for ${entry.employeeName}?`)) {
-    try {
-      const response = await api.post('deleteentry', entry);
-      if (response.data.success) {
-        success.value = 'Entry deleted successfully!';
-        // Remove from local array to update UI instantly
-        entries.value.forEach(group => {
-          group.clockEntries = group.clockEntries.filter(e => e.clockEntryId !== entry.clockEntryId);
-        });
-      } else {
-        error.value = response.data.message || 'Failed to delete entry.';
-      }
-    } catch (err) {
-      error.value = 'An API error occurred while deleting.';
-    }
-  }
-};
-
 const addRow = (dateReference, anchorEntry) => {
   const group = entries.value.find(g => g.dateReference === dateReference);
   if (group) {
@@ -468,6 +499,10 @@ const addRow = (dateReference, anchorEntry) => {
       dateReference: dateReference,
       timeIn: '',
       timeOut: '',
+      // Default both dates to the row's pay-period day; user can move the
+      // clock-out into the following day if the entry crosses midnight.
+      timeInDate: dateReference,
+      timeOutDate: dateReference,
       total: 0,
       adjusted: '',
       type: 1, // Default to Regular
@@ -519,6 +554,8 @@ const copyRow = async (dateReference, entryToCopy) => {
   const dataToCopy = {
     timeIn: entryToCopy.timeIn ? new Date(entryToCopy.timeIn).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '',
     timeOut: entryToCopy.timeOut ? new Date(entryToCopy.timeOut).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '',
+    timeInDate: toIsoDate(entryToCopy.timeInDate || dateReference),
+    timeOutDate: toIsoDate(entryToCopy.timeOutDate || entryToCopy.timeInDate || dateReference),
     type: entryToCopy.type,
     productId: entryToCopy.productId,
     productYear: entryToCopy.productYear,
@@ -582,17 +619,27 @@ function getFormattedDate(date) {
   return `${m}/${d}/${y}`
 }
 
-// Fetch supporting data (products, activities, ranges, etc.)
+// Fetch supporting data (products, activities, ranges, etc.).
+// We fetch the *master* product/year/activity lists from /api/getproductdata so
+// historical values not currently in the admin-designated kiosk list can still be
+// shown (as read-only) in the edit dropdowns. The admin-eligible subset for fresh
+// selections is derived locally by `.inTimeClock`. /api/gettimesheetdata is still
+// the source for date-range options.
 const fetchSupportingData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await api.get('gettimesheetdata')
-    products.value = res.data.accountProducts
-    productYears.value = res.data.accountProductYears
-    activities.value = res.data.timesheetActivities
-    ranges.value = res.data.dateRangeOptions
-    employees.value = res.data.employees || []
+    const [tsRes, pdRes] = await Promise.all([
+      api.get('gettimesheetdata'),
+      api.get('getproductdata'),
+    ])
+    // Master lists (with inTimeClock flag per item)
+    products.value = pdRes.data.accountProducts || []
+    productYears.value = pdRes.data.accountProductYears || []
+    activities.value = pdRes.data.timesheetActivities || []
+    // Date ranges and employee list come from gettimesheetdata
+    ranges.value = tsRes.data.dateRangeOptions || []
+    employees.value = tsRes.data.employees || []
     if (!employees.value || employees.value.length === 0) {
       const empRes = await api.get('getEmployees')
       employees.value = empRes.data || []
@@ -611,6 +658,38 @@ const fetchSupportingData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// Build a per-edit dropdown option list:
+//   - Default options = admin-designated (master items with inTimeClock = true)
+//   - If the row being edited has a currentId that's no longer in the admin list,
+//     pull that value from the master list and prepend it as a `_orphan: true`
+//     entry. The template renders it disabled so the user can see what's there
+//     but can't re-select it once they switch off.
+function buildOptions(masterList, currentId) {
+  const eligible = (masterList || []).filter(o => o.inTimeClock)
+  if (currentId == null || currentId === '' || currentId === 0 || currentId === '0') return eligible
+  // Normalize compare since master ids may be string while v-model might be number.
+  if (eligible.some(o => String(o.id) === String(currentId))) return eligible
+  const orphan = (masterList || []).find(o => String(o.id) === String(currentId))
+  if (!orphan) return eligible
+  return [{ ...orphan, _orphan: true }, ...eligible]
+}
+
+const productOptions = computed(() =>
+  buildOptions(products.value, editForm.value.productId)
+)
+const productYearOptions = computed(() =>
+  buildOptions(productYears.value, editForm.value.productYearId)
+)
+const activityOptions = computed(() =>
+  buildOptions(activities.value, editForm.value.activityId)
+)
+
+// Render label as "{Code} - {Name}", appending a read-only hint for orphans.
+function formatOptLabel(opt) {
+  const base = opt.code && !String(opt.name).startsWith(opt.code) ? `${opt.code} - ${opt.name}` : (opt.name || opt.code || '')
+  return opt._orphan ? `${base} — read-only (no longer in admin list)` : base
 }
 
 const fetchCrewBosses = async () => {
@@ -641,7 +720,8 @@ const fetchEntries = async () => {
           group.clockEntries.forEach(entry => {
             if (!entry.typeName) {
               const typeOpt = typeOptions.find(opt => opt.id === entry.type)
-              entry.typeName = typeOpt ? typeOpt.name : entry.type
+              // Only set when we have an actual mapping; placeholder rows (type=0) stay blank.
+              if (typeOpt) entry.typeName = typeOpt.name
             }
           })
         }
@@ -681,12 +761,45 @@ onMounted(async () => {
   }
 });
 
-function clearMessages() {
-  error.value = '';
-  success.value = '';
+// 'MM-dd-yyyy' or 'MM/DD/YYYY' (backend / dateRef format) -> 'YYYY-MM-DD' (HTML <input type=date>)
+function toIsoDate(usDate) {
+  if (!usDate) return ''
+  const m = /^(\d{2})[-\/](\d{2})[-\/](\d{4})$/.exec(String(usDate).trim())
+  if (!m) return ''
+  return `${m[3]}-${m[1]}-${m[2]}`
 }
 
-function validateDate(dateStr) {
-  return /^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)
+// 'YYYY-MM-DD' -> 'MM-dd-yyyy' for backend submission (matches existing dateRef format)
+function toUsDate(isoDate) {
+  if (!isoDate) return ''
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate).trim())
+  if (!m) return ''
+  return `${m[2]}-${m[3]}-${m[1]}`
+}
+
+// 'MM-dd-yyyy' -> 'MM/DD/YYYY' for display
+function formatDateDisplay(usDate) {
+  if (!usDate) return ''
+  return String(usDate).replace(/-/g, '/')
+}
+
+// Highlight dates in the display row that don't match the row's pay-period day
+// so multi-day spans are visible at a glance.
+function dateDiffersFromGroup(entryDate, groupDate) {
+  if (!entryDate || !groupDate) return false
+  return String(entryDate).trim() !== String(groupDate).trim()
 }
 </script>
+
+<style scoped>
+/* Subtle zebra striping per group. We can't use Bootstrap's table-striped because
+   the date group-header rows would shift the nth-of-type parity at each boundary. */
+.row-alt > td {
+  background-color: rgba(0, 0, 0, 0.025);
+}
+/* Hover highlight on data rows only -- group headers stay calm. */
+tbody tr:not(.table-group-header):hover > td {
+  background-color: rgba(13, 110, 253, 0.075); /* Bootstrap primary at ~7.5% */
+  transition: background-color 0.12s ease;
+}
+</style>

@@ -361,26 +361,86 @@
         </div>
       </div>
 
-      <!-- Tab: Tax & Withholding -->
+      <!-- Tab: Tax Setup -->
       <div v-show="activeTab === 'tax'">
         <div class="row">
           <div class="col-lg-6">
             <div class="card">
-              <div class="card-header"><h5 class="card-title mb-0">Federal Withholding</h5></div>
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">W-4 Form Version</h5>
+                <span class="badge"
+                  :class="isW4Modern ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'">
+                  {{ isW4Modern ? 'W-4 (2020+)' : 'W-4 (Pre-2020)' }}
+                </span>
+              </div>
               <div class="card-body">
                 <div class="row g-3">
                   <div class="col-6">
-                    <label class="form-label">Exemptions</label>
-                    <input type="number" class="form-control form-control-sm" v-model="employee.exemptions" />
+                    <label class="form-label">Form Version</label>
+                    <select class="form-select form-select-sm" v-model.number="employee.w4FormVersion">
+                      <option :value="0">Pre-2020 (allowance count)</option>
+                      <option :value="1">2020+ (annual amounts)</option>
+                    </select>
+                    <small class="text-muted">Switching changes which fields below are editable.</small>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">Filing Status</label>
+                    <select class="form-select form-select-sm" v-model.number="employee.maritalStatus">
+                      <option :value="null">—</option>
+                      <option :value="1">Single</option>
+                      <option :value="0">Married Filing Jointly</option>
+                      <option :value="2" :disabled="!isW4Modern">
+                        Head of Household {{ !isW4Modern ? '(W-4 2020+ only)' : '' }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="col-12"><hr class="my-1" /></div>
+
+                  <!-- Pre-2020 fields -->
+                  <div class="col-6" :class="{ 'opacity-50': isW4Modern }">
+                    <label class="form-label">Exemptions (allowance count)</label>
+                    <input type="number" class="form-control form-control-sm"
+                      v-model.number="employee.exemptions" :disabled="isW4Modern"
+                      :title="isW4Modern ? 'Pre-2020 only — switch form version to edit.' : ''" />
                   </div>
                   <div class="col-6">
                     <label class="form-label">Extra Federal W/H</label>
-                    <input type="number" step="0.01" class="form-control form-control-sm" v-model="employee.extraFederalWithholding" />
+                    <input type="number" step="0.01" class="form-control form-control-sm"
+                      v-model.number="employee.extraFederalWithholding" />
+                    <small class="text-muted">Both forms — Step 4(c) on 2020+.</small>
+                  </div>
+
+                  <!-- W-4 2020+ fields -->
+                  <div class="col-6" :class="{ 'opacity-50': !isW4Modern }">
+                    <label class="form-label">Step 3: Dependents Credit ($)</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm"
+                      v-model.number="employee.w4Step3CreditsAnnual" :disabled="!isW4Modern"
+                      :title="!isW4Modern ? '2020+ only — switch form version to edit.' : ''" />
+                  </div>
+                  <div class="col-6" :class="{ 'opacity-50': !isW4Modern }">
+                    <div class="form-check mt-4">
+                      <input class="form-check-input" type="checkbox" id="w4Step2c"
+                        v-model="employee.w4Step2cChecked" :disabled="!isW4Modern" />
+                      <label class="form-check-label" for="w4Step2c">
+                        Step 2(c): Multiple jobs / spouse works
+                      </label>
+                    </div>
+                  </div>
+                  <div class="col-6" :class="{ 'opacity-50': !isW4Modern }">
+                    <label class="form-label">Step 4(a): Other Income ($/yr)</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm"
+                      v-model.number="employee.w4Step4aOtherIncomeAnnual" :disabled="!isW4Modern" />
+                  </div>
+                  <div class="col-6" :class="{ 'opacity-50': !isW4Modern }">
+                    <label class="form-label">Step 4(b): Other Deductions ($/yr)</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm"
+                      v-model.number="employee.w4Step4bDeductionsAnnual" :disabled="!isW4Modern" />
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
           <div class="col-lg-6">
             <div class="card">
               <div class="card-header"><h5 class="card-title mb-0">Tax Exemptions</h5></div>
@@ -413,13 +473,7 @@
                   <div class="col-4">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" v-model="employee.lniExempt" id="lniExempt" />
-                      <label class="form-check-label" for="lniExempt">LNI Exempt</label>
-                    </div>
-                  </div>
-                  <div class="col-4">
-                    <div class="form-check">
-                      <input class="form-check-input" type="checkbox" v-model="employee.ltcaExempt" id="ltcaExempt" />
-                      <label class="form-check-label" for="ltcaExempt">LTCA Exempt</label>
+                      <label class="form-check-label" for="lniExempt">L&amp;I Exempt</label>
                     </div>
                   </div>
                   <div class="col-4">
@@ -431,90 +485,166 @@
                 </div>
               </div>
             </div>
+
+            <!-- WA Cares (LTCA) + PFML waiver -->
+            <div class="card">
+              <div class="card-header">
+                <h5 class="card-title mb-0">WA Cares &amp; PFML Waivers</h5>
+              </div>
+              <div class="card-body">
+                <div class="row g-3">
+                  <div class="col-6">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" v-model="employee.ltcaExempt" id="ltcaExempt" />
+                      <label class="form-check-label" for="ltcaExempt">WA Cares (LTCA) Exempt</label>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">WA Cares Exemption Expires</label>
+                    <input type="date" class="form-control form-control-sm"
+                      v-model="employee.waCaresExemptExpiryDate"
+                      :disabled="!employee.ltcaExempt"
+                      :title="!employee.ltcaExempt ? 'Mark WA Cares Exempt first.' : ''" />
+                  </div>
+                  <div class="col-12"><hr class="my-1" /></div>
+                  <div class="col-6">
+                    <label class="form-label">PFML Waiver Status</label>
+                    <select class="form-select form-select-sm" v-model.number="employee.pfmlWaiverStatus">
+                      <option :value="null">— None on file —</option>
+                      <option :value="0">Pending</option>
+                      <option :value="1">Approved</option>
+                      <option :value="2">Denied</option>
+                      <option :value="3">Expired</option>
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">PFML Waiver Expires</label>
+                    <input type="date" class="form-control form-control-sm"
+                      v-model="employee.pfmlWaiverExpiryDate"
+                      :disabled="employee.pfmlWaiverStatus !== 1"
+                      :title="employee.pfmlWaiverStatus !== 1 ? 'Only Approved waivers carry an expiry.' : ''" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <AttachmentPanel
+              v-if="employee.employeeId"
+              entity-type="EmployeeExemption"
+              :entity-id="employee.employeeId"
+            />
           </div>
         </div>
       </div>
 
-      <!-- Tab: ACH -->
+      <!-- Tab: Direct Deposit -->
       <div v-show="activeTab === 'ach'">
-        <div class="row">
-          <div class="col-lg-6">
-            <div class="card">
-              <div class="card-header"><h5 class="card-title mb-0">Primary Bank Account</h5></div>
-              <div class="card-body">
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label">Routing Number</label>
-                    <input type="text" class="form-control form-control-sm" v-model="employee.bankRoutingNumber" />
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label">Account Number</label>
-                    <input type="text" class="form-control form-control-sm" v-model="employee.bankAccountNumber" />
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label">Account Type</label>
-                    <select class="form-select form-select-sm" v-model="employee.bankAccountType">
-                      <option :value="null">—</option>
-                      <option :value="0">Checking</option>
-                      <option :value="1">Savings</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label">Bank Code</label>
-                    <input type="text" class="form-control form-control-sm" v-model="employee.bankCode" />
-                  </div>
-                  <div class="col-6">
-                    <div class="form-check mt-2">
-                      <input class="form-check-input" type="checkbox" v-model="employee.achAutoDeposit" id="achAuto" />
-                      <label class="form-check-label" for="achAuto">Auto Deposit</label>
-                    </div>
-                  </div>
-                  <div class="col-6">
-                    <div class="form-check mt-2">
-                      <input class="form-check-input" type="checkbox" v-model="employee.bankPreauthorization" id="bankPreauth" />
-                      <label class="form-check-label" for="bankPreauth">Preauthorization</label>
-                    </div>
-                  </div>
-                </div>
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="card-title mb-0">Direct Deposit Splits</h5>
+              <small class="text-muted">
+                Each split is paid in <strong>Ordinal</strong> order. Exactly one
+                <strong>Balance</strong> row is required (the catch-all). Flat dollars or
+                Percent rows take their amount first.
+              </small>
+            </div>
+            <div class="d-flex gap-2 align-items-center">
+              <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="ddPaperwork"
+                  v-model="ddPaperworkReceived" />
+                <label class="form-check-label" for="ddPaperwork">Paperwork on file</label>
               </div>
+              <button class="btn btn-sm btn-outline-secondary" @click="addSplit">
+                <i class="ri-add-line"></i> Add Split
+              </button>
+              <button class="btn btn-sm btn-primary" @click="saveDirectDeposit"
+                :disabled="ddSaving || !ddDirty">
+                <i class="ri-save-line me-1"></i>{{ ddSaving ? 'Saving...' : 'Save Splits' }}
+              </button>
             </div>
           </div>
 
-          <div class="col-lg-6">
-            <div class="card">
-              <div class="card-header"><h5 class="card-title mb-0">Secondary Bank Account</h5></div>
-              <div class="card-body">
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label">Routing Number</label>
-                    <input type="text" class="form-control form-control-sm" v-model="employee.bankRoutingNumber2" />
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label">Account Number</label>
-                    <input type="text" class="form-control form-control-sm" v-model="employee.bankAccountNumber2" />
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label">Account Type</label>
-                    <select class="form-select form-select-sm" v-model="employee.bankAccountType2">
-                      <option :value="null">—</option>
-                      <option :value="0">Checking</option>
-                      <option :value="1">Savings</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label">Bank Code</label>
-                    <input type="text" class="form-control form-control-sm" v-model="employee.bankCode2" />
-                  </div>
-                  <div class="col-6">
-                    <div class="form-check mt-2">
-                      <input class="form-check-input" type="checkbox" v-model="employee.bankPreauthorization2" id="bankPreauth2" />
-                      <label class="form-check-label" for="bankPreauth2">Preauthorization</label>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <div v-if="ddError" class="alert alert-danger mx-3 my-2 py-2">{{ ddError }}</div>
+          <div v-if="ddWarnings.length" class="alert alert-warning mx-3 my-2 py-2">
+            <strong>Warnings:</strong>
+            <ul class="mb-0">
+              <li v-for="(w,i) in ddWarnings" :key="i">{{ w }}</li>
+            </ul>
+          </div>
+
+          <div class="card-body p-0">
+            <div class="table-responsive" v-if="ddSplits.length">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 70px;">Ordinal</th>
+                    <th>Bank</th>
+                    <th>Account #</th>
+                    <th style="width: 120px;">Acct Type</th>
+                    <th style="width: 130px;">Amount Type</th>
+                    <th class="text-end" style="width: 130px;">Amount</th>
+                    <th style="width: 130px;">Pre-note</th>
+                    <th style="width: 60px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(s, idx) in ddSplits" :key="idx">
+                    <td>
+                      <input type="number" min="1" class="form-control form-control-sm"
+                        v-model.number="s.ordinal" style="width: 65px;" />
+                    </td>
+                    <td>
+                      <select class="form-select form-select-sm" v-model="s.bankCode">
+                        <option :value="null" disabled>— Select —</option>
+                        <option v-for="b in banks" :key="b.bankCode" :value="b.bankCode">
+                          {{ b.bankName }} ({{ b.routingNumber }})
+                        </option>
+                      </select>
+                    </td>
+                    <td>
+                      <input type="text" class="form-control form-control-sm" v-model="s.accountNumber" />
+                    </td>
+                    <td>
+                      <select class="form-select form-select-sm" v-model.number="s.accountType">
+                        <option :value="0">Checking</option>
+                        <option :value="1">Savings</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select class="form-select form-select-sm" v-model.number="s.amountType"
+                        @change="onAmountTypeChange(s)">
+                        <option :value="0">Flat $</option>
+                        <option :value="1">Percent %</option>
+                        <option :value="2">Balance</option>
+                      </select>
+                    </td>
+                    <td class="text-end">
+                      <input v-if="s.amountType !== 2" type="number" step="0.01"
+                        class="form-control form-control-sm text-end" v-model.number="s.amount" />
+                      <span v-else class="text-muted">remainder</span>
+                    </td>
+                    <td>
+                      <span class="badge" :class="prenoteBadgeClass(s.prenoteStatus)">
+                        {{ prenoteLabel(s.prenoteStatus) }}
+                      </span>
+                    </td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-danger" @click="removeSplit(idx)"
+                        :title="ddSplits.length === 1 ? 'Removing the last split clears DD entirely.' : 'Remove split'">
+                        <i class="ri-delete-bin-line"></i>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="p-3 text-muted text-center">
+              No direct-deposit splits — paychecks will be issued by paper check.
+              <button class="btn btn-sm btn-link" @click="addSplit">Add one →</button>
             </div>
           </div>
+
         </div>
       </div>
 
@@ -639,7 +769,13 @@
       <div v-show="activeTab === 'deductions'">
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">Employee Deductions</h5>
+            <div>
+              <h5 class="card-title mb-0">Employee Deductions</h5>
+              <small class="text-muted">
+                Type + Ordinal are managed on the master deduction
+                (<router-link :to="{ name: 'employee-deductions' }">Deductions admin</router-link>).
+              </small>
+            </div>
             <button class="btn btn-sm btn-primary" @click="showAddDeduction = !showAddDeduction">
               <i class="ri-add-line"></i> Add Deduction
             </button>
@@ -648,14 +784,20 @@
             <div class="row g-2 align-items-end">
               <div class="col-3">
                 <label class="form-label">Deduction Code</label>
-                <input type="text" class="form-control form-control-sm" v-model="newDeduction.deductionCode" placeholder="Code" />
+                <select class="form-select form-select-sm" v-model="newDeduction.deductionCode">
+                  <option :value="''" disabled>— Select —</option>
+                  <option v-for="m in masterDeductions" :key="m.deductionCode" :value="m.deductionCode">
+                    {{ m.deductionCode }} — {{ m.description }}
+                  </option>
+                </select>
               </div>
               <div class="col-3">
                 <label class="form-label">Rate</label>
-                <input type="number" step="0.01" class="form-control form-control-sm" v-model="newDeduction.rate" />
+                <input type="number" step="0.01" class="form-control form-control-sm" v-model.number="newDeduction.rate" />
               </div>
               <div class="col-3">
-                <button class="btn btn-sm btn-primary" @click="addEmployeeDeduction">Add</button>
+                <button class="btn btn-sm btn-primary" @click="addEmployeeDeduction"
+                  :disabled="!newDeduction.deductionCode">Add</button>
               </div>
             </div>
           </div>
@@ -666,6 +808,8 @@
                   <tr>
                     <th>Code</th>
                     <th>Description</th>
+                    <th>Type</th>
+                    <th class="text-end" style="width: 80px;">Ordinal</th>
                     <th class="text-end">Rate</th>
                     <th>Added</th>
                     <th style="width: 50px;"></th>
@@ -675,6 +819,14 @@
                   <tr v-for="ded in employee.deductions" :key="ded.deductionCode">
                     <td>{{ ded.deductionCode }}</td>
                     <td>{{ ded.description }}</td>
+                    <td>
+                      <span class="badge" :class="deductionTypeBadgeClass(masterByCode(ded.deductionCode)?.deductionType)">
+                        {{ deductionTypeLabel(masterByCode(ded.deductionCode)?.deductionType) }}
+                      </span>
+                    </td>
+                    <td class="text-end text-muted">
+                      {{ masterByCode(ded.deductionCode)?.ordinal ?? '—' }}
+                    </td>
                     <td class="text-end">{{ ded.rate }}</td>
                     <td>{{ ded.createdDate }}</td>
                     <td>
@@ -955,6 +1107,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '../../services/api'
+import AttachmentPanel from '../../components/AttachmentPanel.vue'
 
 const route = useRoute()
 const loading = ref(true)
@@ -969,6 +1122,19 @@ const history = ref([])
 const showAddDeduction = ref(false)
 
 const newDeduction = reactive({ deductionCode: '', rate: 0, companyId: 1 })
+
+// Direct Deposit (Phase 2 — separate save flow from main employee PUT)
+const ddSplits = ref([])
+const ddOriginalState = ref('[]')
+const ddPaperworkReceived = ref(false)
+const ddSaving = ref(false)
+const ddError = ref('')
+const ddWarnings = ref([])
+const banks = ref([])
+const masterDeductions = ref([])
+
+const ddDirty = computed(() =>
+  JSON.stringify({ splits: ddSplits.value, p: ddPaperworkReceived.value }) !== ddOriginalState.value)
 const showTermModal = ref(false)
 const showRehireModal = ref(false)
 const termForm = reactive({ termDate: '', termKind: 0, termReason: '', doNotRehire: false })
@@ -983,8 +1149,8 @@ const fileTypes = reactive([
 const tabs = [
   { id: 'info', label: 'Info' },
   { id: 'compensation', label: 'Compensation' },
-  { id: 'tax', label: 'Tax' },
-  { id: 'ach', label: 'ACH' },
+  { id: 'tax', label: 'Tax Setup' },
+  { id: 'ach', label: 'Direct Deposit' },
   { id: 'benefits', label: 'Benefits' },
   { id: 'deductions', label: 'Deductions' },
   { id: 'hr', label: 'HR' },
@@ -1005,6 +1171,8 @@ const isDirty = computed(() => {
   if (!employee.value) return false
   return JSON.stringify(employee.value) !== originalState.value
 })
+
+const isW4Modern = computed(() => employee.value?.w4FormVersion === 1)
 
 const loadEmployee = async () => {
   loading.value = true
@@ -1188,6 +1356,117 @@ const addEmployeeDeduction = async () => {
   }
 }
 
+// ───── Direct Deposit ─────
+
+const loadBanks = async () => {
+  try {
+    const r = await api.get('banks')
+    banks.value = r.data
+  } catch (err) { /* leave empty; picker shows placeholder */ }
+}
+
+const loadDirectDeposit = async () => {
+  try {
+    const r = await api.get(`employees/${route.params.employeeId}/direct-deposit`)
+    ddSplits.value = r.data
+    ddPaperworkReceived.value = !!employee.value?.achPaperworkReceived
+    ddOriginalState.value = JSON.stringify({ splits: ddSplits.value, p: ddPaperworkReceived.value })
+  } catch (err) {
+    ddError.value = err.response?.data?.message || 'Failed to load direct-deposit splits'
+  }
+}
+
+const addSplit = () => {
+  const nextOrdinal = ddSplits.value.length === 0
+    ? 1
+    : Math.max(...ddSplits.value.map(s => s.ordinal || 0)) + 1
+  // First split defaults to Balance (the required catch-all); subsequent default to Flat.
+  const isFirst = ddSplits.value.length === 0
+  ddSplits.value.push({
+    ordinal: nextOrdinal,
+    bankCode: null,
+    accountNumber: '',
+    accountType: 0,
+    amountType: isFirst ? 2 : 0,
+    amount: isFirst ? null : 0,
+    prenoteStatus: 0
+  })
+}
+
+const removeSplit = (idx) => {
+  ddSplits.value.splice(idx, 1)
+}
+
+const onAmountTypeChange = (s) => {
+  if (s.amountType === 2) s.amount = null
+  else if (s.amount == null) s.amount = 0
+}
+
+const saveDirectDeposit = async () => {
+  ddSaving.value = true
+  ddError.value = ''
+  ddWarnings.value = []
+  try {
+    const payload = {
+      achPaperworkReceived: ddPaperworkReceived.value,
+      splits: ddSplits.value.map(s => ({
+        ordinal: s.ordinal,
+        bankCode: s.bankCode,
+        accountNumber: s.accountNumber,
+        accountType: s.accountType,
+        amountType: s.amountType,
+        amount: s.amountType === 2 ? null : s.amount,
+        prenoteStatus: s.prenoteStatus
+      }))
+    }
+    const r = await api.put(`employees/${route.params.employeeId}/direct-deposit`, payload)
+    ddWarnings.value = r.data?.warnings || []
+    // Reload to pick up backend's canonical state (server-resolved RoutingNumbers, BankNames, EffectiveDate, etc.)
+    await loadDirectDeposit()
+    // Refresh employee snapshot — legacy Bank* columns + AchAutoDeposit just changed.
+    await loadEmployee()
+    saveMessage.value = 'Direct deposit saved'
+    setTimeout(() => { saveMessage.value = '' }, 3000)
+  } catch (err) {
+    ddError.value = err.response?.data?.message || err.message || 'Save failed'
+  } finally {
+    ddSaving.value = false
+  }
+}
+
+const loadMasterDeductions = async () => {
+  try {
+    const r = await api.get('deductions', { params: { companyId: 1 } })
+    masterDeductions.value = r.data?.items || []
+  } catch (err) { /* picker just stays empty */ }
+}
+
+const masterByCode = (code) => masterDeductions.value.find(m => m.deductionCode === code)
+
+const DEDUCTION_TYPE_LABELS = ['Pretax 401k', 'Roth 401k', 'HSA Pretax', 'Medical', 'Dental/Vision', 'Garnishment', 'Loan', 'Other']
+const deductionTypeLabel = (t) => (t == null) ? '—' : (DEDUCTION_TYPE_LABELS[t] || `Type ${t}`)
+const deductionTypeBadgeClass = (t) => {
+  const map = {
+    0: 'bg-info-subtle text-info',
+    1: 'bg-info-subtle text-info',
+    2: 'bg-success-subtle text-success',
+    3: 'bg-success-subtle text-success',
+    4: 'bg-success-subtle text-success',
+    5: 'bg-danger-subtle text-danger',
+    6: 'bg-warning-subtle text-warning',
+    7: 'bg-secondary-subtle text-secondary'
+  }
+  return map[t] || 'bg-secondary-subtle text-secondary'
+}
+
+const prenoteLabel = (s) => ['Not Sent', 'Sent', 'Confirmed', 'Failed'][s] ?? '?'
+const prenoteBadgeClass = (s) => ({
+  0: 'bg-secondary-subtle text-secondary',
+  1: 'bg-warning-subtle text-warning',
+  2: 'bg-success-subtle text-success',
+  3: 'bg-danger-subtle text-danger'
+}[s] || 'bg-secondary-subtle text-secondary')
+
 const removeEmployeeDeduction = async (ded) => {
   try {
     await api.delete(`employees/${employee.value.employeeId}/deductions/${ded.deductionCode}`)
@@ -1200,10 +1479,13 @@ const removeEmployeeDeduction = async (ded) => {
 
 onMounted(async () => {
   await loadEmployee()
-  // Load notes, files, and history in parallel
+  // Load notes, files, history, banks, and direct-deposit splits in parallel.
   noteTypes.forEach(nt => loadNotes(nt))
   fileTypes.forEach(ft => loadFiles(ft))
   loadHistory()
+  loadBanks()
+  loadDirectDeposit()
+  loadMasterDeductions()
 })
 </script>
 

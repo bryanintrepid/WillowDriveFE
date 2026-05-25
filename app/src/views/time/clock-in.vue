@@ -1,21 +1,21 @@
 <template>
   <div class="container-fluid" style="padding: 1.25rem; margin-top: 0.5rem;">
-    <div class="row">
+    <div class="row align-items-center min-vh-100">
       <!-- Left: employee & crew -->
-      <div class="col-lg-8">
+      <div class="col-lg-7">
         <div class="card">
           <div class="card-body">
             <!-- Status / Errors -->
-            <div v-if="successClockIn || successClockOut" class="alert alert-success d-flex align-items-center" role="alert">
+            <div v-if="successClockIn || successClockOut" class="alert alert-success d-flex align-items-center justify-content-center fs-3" role="alert">
               <i class="ri-checkbox-circle-line me-2"></i>
               <div>{{ successClockIn ? 'Clock-in successful.' : 'Clock-out successful.' }}</div>
             </div>
-            <div v-if="errorMsg" class="alert alert-danger" role="alert">{{ errorMsg }}</div>
+            <div v-if="errorMsg" class="alert alert-danger text-center fs-3" role="alert">{{ errorMsg }}</div>
 
             <!-- Headline / Prompt -->
-            <div class="text-center mb-3">
-              <h2 v-if="employee.name" class="fw-semibold">{{ employee.name }}</h2>
-              <h2 v-else class="fw-semibold">Please enter your PIN<br /><small class="text-muted">Por favor ingresa tu pin</small></h2>
+            <div class="text-center mb-4">
+              <h1 v-if="employee.name" class="fw-semibold display-4">{{ employee.name }}</h1>
+              <h1 v-else class="fw-semibold display-5">Please enter your PIN<br /><span class="text-muted">Por favor ingresa tu pin</span></h1>
             </div>
 
             <!-- PIN input -->
@@ -24,7 +24,7 @@
                 v-model="pin"
                 maxlength="4"
                 class="form-control text-center"
-                style="max-width: 320px; font-size: 2rem; letter-spacing: 0.3rem;"
+                style="max-width: 560px; font-size: 5rem; letter-spacing: 0.75rem; height: auto; padding: 1.25rem;"
                 placeholder="PIN"
                 autocomplete="one-time-code"
               />
@@ -86,8 +86,8 @@
             <div v-if="crewMembers.length > 0">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h6 class="mb-0">Crew Members</h6>
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="selectAllCrew" v-model="selectAll" @change="selectAllCrewMembers" />
+                <div class="form-check d-flex align-items-center gap-2">
+                  <input class="form-check-input crew-check" type="checkbox" id="selectAllCrew" v-model="selectAll" @change="selectAllCrewMembers" />
                   <label class="form-check-label" for="selectAllCrew">Select All Available</label>
                 </div>
               </div>
@@ -95,22 +95,18 @@
                 <table class="table table-sm table-hover align-middle">
                   <thead class="table-light">
                     <tr>
-                      <th style="width: 60px"></th>
+                      <th style="width: 90px"></th>
                       <th>Name</th>
                       <th class="text-center">Time In</th>
-                      <th>Product</th>
-                      <th>Year</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="cm in crewMembers" :key="cm.id">
                       <td>
-                        <input class="form-check-input" type="checkbox" v-model="cm.clockIn" :disabled="(cm.timeIn && !employee.timeIn) || (!cm.timeIn && employee.timeIn)" />
+                        <input class="form-check-input crew-check" type="checkbox" v-model="cm.clockIn" :disabled="(cm.timeIn && !employee.timeIn) || (!cm.timeIn && employee.timeIn)" />
                       </td>
                       <td>{{ cm.name }}</td>
                       <td class="text-center">{{ cm.timeIn || '-' }}</td>
-                      <td>{{ cm.productName || '-' }}</td>
-                      <td>{{ cm.productYearName || '-' }}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -121,32 +117,32 @@
       </div>
 
       <!-- Right: keypad -->
-      <div class="col-lg-4">
+      <div class="col-lg-5">
         <div class="card">
           <div class="card-body">
-            <div class="d-grid gap-3" style="max-width: 420px; margin: 0 auto;">
+            <div class="d-grid gap-3 keypad" style="max-width: 480px; margin: 0 auto;">
               <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(9)">9</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(8)">8</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(7)">7</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(9)">9</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(8)">8</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(7)">7</button>
               </div>
               <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(6)">6</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(5)">5</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(4)">4</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(6)">6</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(5)">5</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(4)">4</button>
               </div>
               <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(3)">3</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(2)">2</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(1)">1</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(3)">3</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(2)">2</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(1)">1</button>
               </div>
               <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press('back')">
-                  <i class="ri-arrow-go-back-line fs-3"></i>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press('back')">
+                  <i class="ri-arrow-go-back-line"></i>
                 </button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="press(0)">0</button>
-                <button class="btn btn-success btn-lg shadow-sm" style="width: 100px; height: 100px;" @click="enterTime()">
-                  <i class="ri-check-line fs-3"></i>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(0)">0</button>
+                <button class="btn btn-success btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="enterTime()">
+                  <i class="ri-check-line"></i>
                 </button>
               </div>
             </div>
@@ -214,6 +210,11 @@ const crewMembers = ref([])
 
 function press(val) {
   if (val === 'back') {
+    // Once an employee is selected, the PIN input is hidden -- a back press should reset, not backspace.
+    if (record.value.entry.clockEntryId !== 0) {
+      clearData()
+      return
+    }
     if (pin.value.length > 0) pin.value = pin.value.substring(0, pin.value.length - 1)
     if (code.value.length > 0) code.value = code.value.substring(0, code.value.length - 1)
     if (pin.value.length === 0 && code.value.length === 0) {
@@ -411,5 +412,16 @@ onMounted(() => init())
 <style scoped>
 .dashhead .breadcrumb {
   margin-bottom: 0;
+}
+.keypad button {
+  border-radius: 50%;
+  border: 2px solid #000;
+  font-size: 3.5rem;
+  font-weight: 600;
+}
+.crew-check {
+  width: 2rem;
+  height: 2rem;
+  cursor: pointer;
 }
 </style>
