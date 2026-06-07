@@ -347,11 +347,17 @@ const printAllChecks = async () => {
     const response = await api.get(`ap-check-runs/${checkRunId.value}/print-data`);
     const printData = response.data;
     if (!printData.length) { alert('No checks to print.'); return; }
+    // Vendor/invoice free-text fields are user-editable and flow straight into
+    // document.write below, so every interpolated value must be HTML-escaped to
+    // prevent stored XSS (e.g. a vendor name of <img src=x onerror=...> running
+    // in this same-origin print window). Numeric amounts are not user-controlled.
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
     const printWindow = window.open('', '_blank');
     let html = '<html><head><title>Check Print</title><style>body{font-family:monospace;} .check{page-break-after:always;padding:20px;} table{width:100%;border-collapse:collapse;} td,th{border:1px solid #ccc;padding:4px;text-align:left;}</style></head><body>';
     for (const c of printData) {
-      html += `<div class="check"><h2>Check #${c.checkNumber || c.checkReference}</h2><p><strong>Pay to:</strong> ${c.payee || c.vendorName}</p><p>${c.street || ''} ${c.city || ''} ${c.state || ''} ${c.zip || ''}</p><p><strong>Amount:</strong> $${c.checkAmount.toFixed(2)}</p><table><tr><th>Invoice</th><th>Description</th><th>Amount</th><th>Discount</th><th>Net</th></tr>`;
-      for (const l of c.lines) { html += `<tr><td>${l.invoiceReference||''}</td><td>${l.invoiceDescription||''}</td><td>${l.amount.toFixed(2)}</td><td>${l.discount.toFixed(2)}</td><td>${l.netAmount.toFixed(2)}</td></tr>`; }
+      html += `<div class="check"><h2>Check #${esc(c.checkNumber || c.checkReference)}</h2><p><strong>Pay to:</strong> ${esc(c.payee || c.vendorName)}</p><p>${esc(c.street || '')} ${esc(c.city || '')} ${esc(c.state || '')} ${esc(c.zip || '')}</p><p><strong>Amount:</strong> $${c.checkAmount.toFixed(2)}</p><table><tr><th>Invoice</th><th>Description</th><th>Amount</th><th>Discount</th><th>Net</th></tr>`;
+      for (const l of c.lines) { html += `<tr><td>${esc(l.invoiceReference||'')}</td><td>${esc(l.invoiceDescription||'')}</td><td>${l.amount.toFixed(2)}</td><td>${l.discount.toFixed(2)}</td><td>${l.netAmount.toFixed(2)}</td></tr>`; }
       html += '</table></div>';
     }
     html += '</body></html>';
