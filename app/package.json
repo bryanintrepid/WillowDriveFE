@@ -14,7 +14,7 @@
   "dependencies": {
     "@popperjs/core": "^2.11.8",
     "@vueform/toggle": "^2.1.4",
-    "axios": "^1.9.0",
+    "axios": "^1.17.0",
     "bootstrap": "^5.3.7",
     "boxicons": "^2.1.4",
     "leaflet": "^1.9.4",
