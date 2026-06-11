@@ -122,19 +122,19 @@
           <div class="card-body">
             <div class="d-grid gap-3 keypad" style="max-width: 480px; margin: 0 auto;">
               <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(9)">9</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(8)">8</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(7)">7</button>
-              </div>
-              <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(6)">6</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(5)">5</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(4)">4</button>
-              </div>
-              <div class="d-flex justify-content-center align-items-center gap-3">
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(3)">3</button>
-                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(2)">2</button>
                 <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(1)">1</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(2)">2</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(3)">3</button>
+              </div>
+              <div class="d-flex justify-content-center align-items-center gap-3">
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(4)">4</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(5)">5</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(6)">6</button>
+              </div>
+              <div class="d-flex justify-content-center align-items-center gap-3">
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(7)">7</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(8)">8</button>
+                <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press(9)">9</button>
               </div>
               <div class="d-flex justify-content-center align-items-center gap-3">
                 <button class="btn btn-light btn-lg shadow-sm" style="width: 140px; height: 140px;" @click="press('back')">
