@@ -3,6 +3,7 @@ import { onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import KioskLayout from '@/layouts/KioskLayout.vue'
+import AuthLayout from '@/layouts/AuthLayout.vue'
 
 onMounted(() => {
   // Force the body to have the correct attributes for the vertical layout.
@@ -15,7 +16,8 @@ onMounted(() => {
 });
 
 const route = useRoute()
-const layout = computed(() => (route.meta && route.meta.layout === 'kiosk' ? KioskLayout : DefaultLayout))
+const layouts = { kiosk: KioskLayout, auth: AuthLayout }
+const layout = computed(() => layouts[route.meta?.layout] || DefaultLayout)
 </script>
 
 <template>
