@@ -5,7 +5,8 @@ import { defineConfig, devices } from '@playwright/test'
 // Prerequisites for running e2e tests:
 //   - v2 API listening at https://localhost:7077 (the URL hardcoded in src/services/api.js for dev)
 //     -> from WillowDrivev2/, run `dotnet run` (default profile binds 7077).
-//   - SQL Server T9 reachable with the standard test users (kiosk, testAdmin, etc.).
+//   - SQL Server reachable with the standard test users (kiosk, testAdmin, etc.). Don't assume a DB
+//     name -- it's whatever the API's DataConnection points at (dotnet user-secrets list | grep DataConnection).
 //
 // Playwright starts Vite itself (webServer below).
 //

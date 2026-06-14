@@ -246,11 +246,9 @@ function clockIn(val) {
       alreadyClockedIn.value = response.data.clockedIn
       if (!response.data.clockOverride && response.data.error) {
         errorMsg.value = response.data.error
-        setTimeout(() => {
-          errorMsg.value = ''
-        }, 3000)
       }
-      if (response.data.clockEntry.clockEntryId > 0) {
+      // Guard: a rejected punch (e.g. "Closed") returns clockEntry === null.
+      if (response.data.clockEntry?.clockEntryId > 0) {
         record.value.employee.id = response.data.clockEntry.employeeId
         record.value.employee.name = response.data.clockEntry.employeeName
         record.value.entry = response.data.clockEntry
@@ -266,18 +264,16 @@ function clockIn(val) {
             errorMsg.value = msg?.response?.data?.error || 'Crew clock-in failed'
           })
         })
-      } else {
+      } else if (!errorMsg.value) {
+        // Only fall back to "Invalid PIN" when the server didn't already give a reason.
         errorMsg.value = 'Invalid PIN'
-        setTimeout(() => {
-          errorMsg.value = ''
-          clearData()
-        }, 1000)
       }
     })
     .catch(() => {})
     .finally(() => {
       working.value = false
-      setTimeout(() => clearData(), 1000)
+      // Hold the result (success or error) on screen ~3s so people can follow the punch before reset.
+      setTimeout(() => clearData(), 3000)
     })
 }
 
@@ -373,7 +369,8 @@ function enterTime(val) {
       record.value.entry = response.data.clockEntry
       successClockOut.value = response.data.success && !response.data.clockedIn
       alreadyClockedIn.value = false
-      setTimeout(() => clearData(), 2000)
+      // Hold the result ~3s so people can follow the punch before reset.
+      setTimeout(() => clearData(), 3000)
     })
     .catch((msg) => {
       errorMsg.value = msg?.response?.data?.error || 'Clock-out failed'
