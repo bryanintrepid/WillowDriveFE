@@ -60,6 +60,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useMainStore } from '@/stores/mainStore' // Adjust the path as needed
 import api from '@/services/api' // Adjust the path to your Axios instance
 import { isKioskUser } from '@/utils/auth'
+import { startTokenRefresh } from '@/services/tokenRefresh'
 
 const router = useRouter()
 const route = useRoute()
@@ -83,9 +84,13 @@ const signin = async () => {
       Username: username.value,
       Password: password.value,
     })
-    const { token, user } = response.data
+    const { token, refreshToken, user } = response.data
     localStorage.setItem('token', token)
+    if (refreshToken) { try { localStorage.setItem('refreshToken', refreshToken) } catch (e) {} }
     try { localStorage.setItem('user', JSON.stringify(user)) } catch (e) {}
+    // Begin auto-refreshing the access token before it expires (keeps the kiosk
+    // logged in indefinitely without user interaction).
+    startTokenRefresh()
     mainStore.setUser(user)
     mainStore.setError(null)
     successMessage.value = 'Login successful!'

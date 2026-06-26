@@ -47,6 +47,7 @@ import { useRouter } from 'vue-router'
 import { useMainStore } from '@/stores/mainStore'
 import FiscalPeriodBadge from '@/components/FiscalPeriodBadge.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
+import { clearAuth } from '@/services/tokenRefresh'
 
 const router = useRouter()
 const mainStore = useMainStore()
@@ -57,11 +58,8 @@ const displayName = computed(() => {
 })
 
 const logout = () => {
-  // Clear auth
-  try {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-  } catch (e) {}
+  // Clear auth (token + refresh token + user) and stop the auto-refresh timer.
+  clearAuth()
   mainStore.setUser({})
   // Redirect to login
   router.push({ path: '/login' })

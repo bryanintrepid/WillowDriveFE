@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { refreshTokens, clearAuth } from './tokenRefresh';
 
 const api = axios.create({
   baseURL: process.env.NODE_ENV !== 'production' ? 'https://localhost:7077/api/' : 'https://api.willowdrive.com/api/',
@@ -23,19 +24,27 @@ api.interceptors.request.use(
 // Add a response interceptor
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     // Handle errors globally
     if (error.response) {
       const status = error.response.status;
-      const url = (error.config && error.config.url) ? String(error.config.url) : '';
-      // 401 from anything other than the login call itself = expired/invalid token.
-      // Clear stale auth and bounce to /login with redirect back to the current path.
-      const isLoginRequest = /(^|\/)login(\?|$)/i.test(url);
-      if (status === 401 && !isLoginRequest && typeof window !== 'undefined') {
-        try {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-        } catch (e) { /* ignore storage errors */ }
+      const config = error.config || {};
+      const url = config.url ? String(config.url) : '';
+      // A 401 from a normal API call = the access token expired. Try to silently
+      // refresh it and replay the request once; only bounce to /login if the
+      // refresh token is also dead. (login/refresh calls themselves are excluded
+      // so we never recurse, and _retried guards against an infinite retry loop.)
+      const isAuthCall = /(^|\/)(login|refresh)(\?|$)/i.test(url);
+      if (status === 401 && !isAuthCall && !config._retried && typeof window !== 'undefined') {
+        config._retried = true;
+        const newToken = await refreshTokens();
+        if (newToken) {
+          config.headers = config.headers || {};
+          config.headers['Authorization'] = `Bearer ${newToken}`;
+          return api(config); // replay the original request transparently
+        }
+        // Refresh failed — genuinely logged out now.
+        clearAuth();
         if (window.location.pathname !== '/login') {
           const redirect = window.location.pathname + window.location.search;
           window.location.assign('/login?redirect=' + encodeURIComponent(redirect));
