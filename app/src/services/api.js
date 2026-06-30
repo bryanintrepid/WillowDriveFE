@@ -2,7 +2,10 @@ import axios from 'axios';
 import { refreshTokens, clearAuth } from './tokenRefresh';
 
 const api = axios.create({
-  baseURL: process.env.NODE_ENV !== 'production' ? 'https://localhost:7077/api/' : 'https://api.willowdrive.com/api/',
+  // Dev uses a relative path so requests go through the Vite dev-server proxy
+  // (see vite.config.js) -- this makes it work from localhost AND from a tablet
+  // hitting the PC's LAN IP, with no self-signed-cert prompt on the device.
+  baseURL: process.env.NODE_ENV !== 'production' ? '/api/' : 'https://api.willowdrive.com/api/',
   headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
 });
 

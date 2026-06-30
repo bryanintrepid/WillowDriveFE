@@ -30,6 +30,11 @@
                   Presets
                 </a>
               </li>
+              <li class="nav-item">
+                <a class="nav-link" :class="{ active: tab === 'crewbosses' }" @click="tab = 'crewbosses'" data-bs-toggle="tab" href="#crewbosses" role="tab">
+                  Crew Bosses
+                </a>
+              </li>
             </ul>
           </div>
           <div class="card-body">
@@ -142,6 +147,25 @@
                   <div v-if="error" class="text-danger mt-2">{{ error }}</div>
                 </div>
               </div>
+
+              <!-- Crew Bosses Tab -->
+              <div class="tab-pane" :class="{ active: tab === 'crewbosses' }" id="crewbosses" role="tabpanel">
+                <h5 class="card-title">Crew Bosses</h5>
+                <p class="text-muted small mb-3">
+                  When on, this crew boss's crew can clock out without entering a code &mdash; the boss's
+                  code is assigned to them automatically (pulled when they clock out after the boss, or
+                  back-filled when the boss clocks out). When off, each crew member enters their own code.
+                </p>
+                <ul class="list-group">
+                  <li v-for="boss in crewBosses" :key="boss.id" class="list-group-item d-flex align-items-center">
+                    <div class="form-check form-switch me-3">
+                      <input class="form-check-input" type="checkbox" role="switch" v-model="boss.autoAssignCrewCode" @change="toggleCrewBossCode(boss.id)">
+                    </div>
+                    <span>{{ boss.employeeNumber }} - {{ boss.name }}</span>
+                  </li>
+                  <li v-if="crewBosses.length === 0" class="list-group-item text-muted">No crew bosses found.</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
@@ -176,6 +200,7 @@ const tardyAfter = ref('08:07')
 const maxLoginWait = ref(5)
 const presets = ref([])
 const preset = ref(null)
+const crewBosses = ref([])
 const settings = ref({})
 const objMarkerLabel = { 0: '0', 5: '5', 10: '10', 15: '15', 20: '20', 25: '25', 30: '30', 35: '35', 40: '40', 45: '45', 50: '50', 55: '55' }
 
@@ -396,9 +421,28 @@ function getPresets() {
 }
 
 
+function getCrewBosses() {
+  api.get("getcrewbosses").then(function (response) {
+    crewBosses.value = response.data || []
+  }).catch(function (error) {
+  });
+}
+
+function toggleCrewBossCode(id) {
+  var data = { "key": String(id) };
+  api.post("togglecrewbosscode", data).then(function (response) {
+    if (response.data) {
+      message.value = "Toggled"
+      crewBosses.value = response.data;
+    }
+  }).catch(function (error) {
+  });
+}
+
 function init() {
   getProductData()
   getSettings()
+  getCrewBosses()
 }
 
 

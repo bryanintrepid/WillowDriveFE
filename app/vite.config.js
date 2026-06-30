@@ -22,4 +22,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     },
   },
+  server: {
+    // host:true binds 0.0.0.0 so a tablet on the same LAN can reach the dev server.
+    host: true,
+    // Forward /api to the local .NET API. secure:false accepts the API's dev
+    // self-signed cert, so the tablet never has to trust it directly -- it only
+    // talks plain HTTP to Vite, which proxies to https://localhost:7077 here.
+    proxy: {
+      '/api': {
+        target: 'https://localhost:7077',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })

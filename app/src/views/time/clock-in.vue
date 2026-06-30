@@ -1,6 +1,6 @@
 <template>
-  <div class="container-fluid" style="padding: 1.25rem; margin-top: 0.5rem;">
-    <div class="row align-items-center min-vh-100">
+  <div class="container-fluid kiosk-screen">
+    <div class="row align-items-center g-3 w-100 m-0">
       <!-- Left: employee & crew -->
       <div class="col-lg-7">
         <div class="card">
@@ -30,8 +30,9 @@
               />
             </div>
 
-            <!-- Code input when already clocked in (for clock-out) -->
-            <div v-if="record.entry.clockEntryId !== 0 && alreadyClockedIn && !successClockOut" class="d-flex justify-content-center mb-3">
+            <!-- Code input when already clocked in (for clock-out). Hidden for crew whose
+                 crew boss auto-assigns the code -- they clock out with no code. -->
+            <div v-if="record.entry.clockEntryId !== 0 && alreadyClockedIn && !successClockOut && !employee.inheritCrewCode" class="d-flex justify-content-center mb-3">
               <input
                 v-model="code"
                 class="form-control text-center"
@@ -39,6 +40,14 @@
                 placeholder="Enter 9-digit code to clock out"
                 autocomplete="off"
               />
+            </div>
+
+            <!-- Clock Out (no code): crew whose boss auto-assigns the code -->
+            <div v-if="record.entry.clockEntryId !== 0 && alreadyClockedIn && !successClockOut && employee.inheritCrewCode" class="text-center mb-3">
+              <button class="btn btn-primary btn-lg" @click="enterTime()" :disabled="working">
+                <span v-if="working" class="spinner-border spinner-border-sm me-2"></span>
+                Clock Out
+              </button>
             </div>
 
             <!-- Action: Clock In -->
@@ -49,8 +58,8 @@
               </button>
             </div>
 
-            <!-- Preset buttons for code entry when already clocked in -->
-            <div v-if="!errorMsg && alreadyClockedIn && !successClockOut" class="text-center mb-3">
+            <!-- Preset buttons for code entry when already clocked in (skip for auto-assign crew) -->
+            <div v-if="!errorMsg && alreadyClockedIn && !successClockOut && !employee.inheritCrewCode" class="text-center mb-3">
               <div class="row g-2 justify-content-center">
                 <div class="col-auto" v-for="preset in presets" :key="preset.code">
                   <button class="btn btn-outline-secondary btn-lg" @click="enterTime(preset.code)">{{ preset.code }}</button>
@@ -195,6 +204,9 @@ const employee = ref({
   timeOut: null,
   entryId: null,
   clockIn: false,
+  // True when this employee's crew boss auto-assigns the clock-out code,
+  // so we let them clock out without entering a 9-digit code.
+  inheritCrewCode: false,
 })
 
 const pin = ref('')
@@ -256,11 +268,11 @@ function clockIn(val) {
         alreadyClockedIn.value = response.data.clockedIn
         errorMsg.value = ''
 
-        // Clock in selected crew members
+        // Clock in selected crew members. By id, not PIN: the crew list no longer
+        // carries PINs (H-003), so a PIN-based call would send an empty PIN and fail.
         crewMembers.value.forEach((cm) => {
           if (!cm.clockIn) return
-          const cmPin = cm.pin
-          api.get(`clockin?pin=${cmPin}`).catch((msg) => {
+          api.get(`clockinbyid?id=${cm.id}`).catch((msg) => {
             errorMsg.value = msg?.response?.data?.error || 'Crew clock-in failed'
           })
         })
@@ -298,6 +310,7 @@ watch(pin, (val) => {
       employee.value.timeIn = data.timeIn
       employee.value.entryId = data.entryId
       employee.value.clockIn = data.clockIn
+      employee.value.inheritCrewCode = data.inheritCrewCode
       record.value.entry.clockEntryId = data.entryId
       errorMsg.value = ''
       crewMembers.value = data.crewMembers || []
@@ -335,6 +348,9 @@ function clearData() {
   }
   successClockIn.value = false
   successClockOut.value = false
+  // Reset clocked-in state too, else after canceling a clock-out the preset
+  // buttons (gated on alreadyClockedIn) keep showing on the PIN screen.
+  alreadyClockedIn.value = false
   errorMsg.value = ''
   working.value = false
   employee.value = {
@@ -347,25 +363,31 @@ function clearData() {
     timeOut: null,
     entryId: null,
     clockIn: false,
+    inheritCrewCode: false,
   }
   crewMembers.value = []
   selectAll.value = false
 }
 
 function enterTime(val) {
+  // Crew members whose boss auto-assigns the code clock out with no code; the
+  // backend resolves it from the boss's punch (or back-fills when the boss clocks out).
+  const inherit = employee.value.inheritCrewCode
   const data = {
     entryId: employee.value.entryId,
     employeeId: employee.value.id,
-    code: val == null ? code.value : val,
+    code: inherit ? '' : (val == null ? code.value : val),
   }
-  if (!data.code || String(data.code).length < 9) {
+  if (!inherit && (!data.code || String(data.code).length < 9)) {
     errorMsg.value = 'Please enter a valid code'
     setTimeout(() => (errorMsg.value = ''), 2000)
     return
   }
+  working.value = true
   api
     .post('clockout', data)
     .then((response) => {
+      working.value = false
       record.value.entry = response.data.clockEntry
       successClockOut.value = response.data.success && !response.data.clockedIn
       alreadyClockedIn.value = false
@@ -373,6 +395,7 @@ function enterTime(val) {
       setTimeout(() => clearData(), 3000)
     })
     .catch((msg) => {
+      working.value = false
       errorMsg.value = msg?.response?.data?.error || 'Clock-out failed'
       setTimeout(() => (errorMsg.value = ''), 2000)
     })
@@ -410,11 +433,52 @@ onMounted(() => init())
 .dashhead .breadcrumb {
   margin-bottom: 0;
 }
+/* Tablet touch responsiveness: the default viewport allows double-tap-to-zoom,
+   so the browser delays each tap ~300ms waiting for a second tap. manipulation
+   disables that delay (and double-tap zoom) on buttons without blocking pinch-zoom,
+   so keypad presses register on the first touch. user-select/tap-highlight keep
+   rapid taps from selecting text or flashing. */
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Lock the kiosk to the viewport so the page itself never scrolls when typing.
+   Any overflow (e.g. a long crew list) scrolls inside its own card instead. */
+.kiosk-screen {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem;
+}
+.kiosk-screen :deep(.card) {
+  max-height: calc(100dvh - 1.5rem);
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+.kiosk-screen :deep(.card-body) {
+  overflow-y: auto;
+}
+
+/* Size the keypad to the viewport height so all four rows always fit without
+   scrolling. clamp keeps it tappable on small screens and capped on large ones.
+   !important overrides the per-button inline width/height in the template. */
 .keypad button {
   border-radius: 50%;
   border: 2px solid #000;
-  font-size: 3.5rem;
   font-weight: 600;
+  width: clamp(64px, 12vh, 140px) !important;
+  height: clamp(64px, 12vh, 140px) !important;
+  font-size: clamp(1.4rem, 4.5vh, 3.5rem) !important;
+}
+.keypad {
+  gap: clamp(0.4rem, 1.2vh, 1rem) !important;
+}
+.keypad > div {
+  gap: clamp(0.4rem, 1.2vh, 1rem) !important;
 }
 .crew-check {
   width: 2rem;

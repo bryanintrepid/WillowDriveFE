@@ -3,8 +3,10 @@ import axios from 'axios';
 // Same base URL resolution as services/api.js. Kept here (rather than imported
 // from api.js) so this module has no dependency on api.js — api.js imports US,
 // and a back-import would create a cycle.
+// Dev uses a relative path so it flows through the Vite proxy (see vite.config.js),
+// matching services/api.js -- works from localhost and from a LAN tablet alike.
 const BASE_URL = process.env.NODE_ENV !== 'production'
-  ? 'https://localhost:7077/api/'
+  ? '/api/'
   : 'https://api.willowdrive.com/api/';
 
 // Bare client with NO interceptors, so refreshing never recurses through the
